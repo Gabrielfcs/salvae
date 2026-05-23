@@ -28,6 +28,10 @@ pub struct SalvaeApp {
     tx: Sender<Command>,
     rx: Receiver<Event>,
     forms: Forms,
+    /// The game id of the conflict we have already forced the window open for,
+    /// so a single conflict surfaces the window exactly once (the user can
+    /// re-minimize while deciding).
+    surfaced_conflict: Option<String>,
     /// Tray menu item ids (set by Task 9 via `with_tray`).
     tray_open_id: Option<tray_icon::menu::MenuId>,
     tray_quit_id: Option<tray_icon::menu::MenuId>,
@@ -42,6 +46,7 @@ impl SalvaeApp {
             tx,
             rx,
             forms: Forms::default(),
+            surfaced_conflict: None,
             tray_open_id: None,
             tray_quit_id: None,
             _tray: None,
@@ -119,7 +124,9 @@ impl SalvaeApp {
                         channel_id,
                     });
                 } else {
-                    self.vm.last_error = Some("Guild/Channel id must be numbers".into());
+                    // Surface in both the banner and the activity log.
+                    self.vm
+                        .apply(Event::Error("Guild/Channel id must be numbers".into()));
                 }
             }
         });
@@ -309,10 +316,33 @@ impl eframe::App for SalvaeApp {
         self.drain_events();
         self.poll_tray(ctx);
 
+        // A conflict is the core safety prompt: force the window visible once
+        // when a new one arrives, even if minimized to tray.
+        match self.vm.pending_conflicts.first() {
+            Some(c) if self.surfaced_conflict.as_deref() != Some(&c.game_id) => {
+                self.surfaced_conflict = Some(c.game_id.clone());
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            None => self.surfaced_conflict = None,
+            _ => {}
+        }
+
         // Minimize-to-tray: intercept the window close button.
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+
+        if let Some(err) = self.vm.last_error.clone() {
+            egui::TopBottomPanel::top("error").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("⚠ {err}"));
+                    if ui.button("Dismiss").clicked() {
+                        self.vm.last_error = None;
+                    }
+                });
+            });
         }
 
         egui::SidePanel::left("groups")
@@ -329,5 +359,10 @@ impl eframe::App for SalvaeApp {
             self.games_panel(ui);
         });
         self.conflict_modal(ctx);
+
+        // Tray menu clicks arrive on a global channel that eframe does not
+        // observe, so schedule a low-frequency wake (also a fallback for worker
+        // events). This is a timer, not a busy loop — idle stays cheap.
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
     }
 }

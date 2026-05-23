@@ -56,9 +56,11 @@ impl AgentBackend {
         })
     }
 
-    /// Rebuild the agent after a config change.
+    /// Apply a config change by swapping in fresh per-group runtimes, keeping
+    /// the agent's watcher/detector (and their live process/open-game state).
     fn rebuild_agent(&mut self) -> Result<(), String> {
-        self.agent = build_agent(&self.store, &self.games, &self.app_dir)?;
+        let groups = build_groups(&self.store, &self.app_dir)?;
+        self.agent.set_groups(groups);
         Ok(())
     }
 
@@ -121,12 +123,12 @@ fn enumerate_games() -> Vec<InstalledGame> {
     games
 }
 
-/// Build a fresh agent for the current config (mirrors the agent binary).
-fn build_agent(
+/// Build the per-group runtimes for the current config (mirrors the agent
+/// binary). The watcher/detector are built once at load and reused.
+fn build_groups(
     store: &ConfigStore<DpapiSecretStore>,
-    games: &[InstalledGame],
     app_dir: &Path,
-) -> Result<DiscordAgent, String> {
+) -> Result<Vec<GroupRuntime<DiscordChannel>>, String> {
     let device_id = store.device_id().to_string();
     let backups_dir = app_dir.join("backups");
     let mut groups = Vec::new();
@@ -146,6 +148,16 @@ fn build_agent(
         .with_state(state);
         groups.push(GroupRuntime::new(group.clone(), engine, state_path));
     }
+    Ok(groups)
+}
+
+/// Build a fresh agent for the current config (mirrors the agent binary).
+fn build_agent(
+    store: &ConfigStore<DpapiSecretStore>,
+    games: &[InstalledGame],
+    app_dir: &Path,
+) -> Result<DiscordAgent, String> {
+    let groups = build_groups(store, app_dir)?;
     let watcher = Watcher::new(SystemProcessLister);
     let detector = Detector::new(games.to_vec());
     Ok(Agent::new(watcher, detector, groups))
