@@ -7,6 +7,7 @@ authors.workspace = true
 description = "Background agent that syncs co-op saves on game open/close for Salvaê."
 
 [dependencies]
+salvae-core = { path = "../salvae-core" }
 salvae-config = { path = "../salvae-config" }
 salvae-sync = { path = "../salvae-sync" }
 salvae-detect = { path = "../salvae-detect" }

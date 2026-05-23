@@ -3,7 +3,8 @@
 use std::path::PathBuf;
 
 use salvae_config::group::GroupConfig;
-use salvae_sync::engine::{PushOutcome, SyncEngine};
+use salvae_core::version::SaveVersion;
+use salvae_sync::engine::{PushOutcome, Resolution, SyncEngine};
 use salvae_vault::channel::Channel;
 use salvae_watch::detector::{Detector, GameEvent};
 use salvae_watch::process::{ProcessLister, Watcher};
@@ -113,6 +114,46 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
             results.push((event, outcome));
         }
         Ok(results)
+    }
+
+    /// Resolve a pending conflict for `game_id` with the user's choice.
+    pub fn handle_resolve(
+        &mut self,
+        game_id: &str,
+        resolution: Resolution,
+        now_ms: u64,
+    ) -> Result<AgentOutcome, AgentError> {
+        let Some((rt, folder)) = self.resolve(game_id) else {
+            return Ok(AgentOutcome::NotConfigured);
+        };
+        let push = rt.engine.resolve(game_id, &folder, resolution, now_ms)?;
+        save_state(rt)?;
+        Ok(AgentOutcome::Closed { push })
+    }
+
+    /// List the stored versions of `game_id` (empty if it is not configured).
+    pub fn history(&mut self, game_id: &str) -> Result<Vec<SaveVersion>, AgentError> {
+        let Some((rt, _folder)) = self.resolve(game_id) else {
+            return Ok(Vec::new());
+        };
+        Ok(rt.engine.list_versions(game_id)?)
+    }
+
+    /// Restore a specific past `version` of `game_id` into its save folder.
+    pub fn restore(
+        &mut self,
+        game_id: &str,
+        version: u64,
+        now_ms: u64,
+    ) -> Result<AgentOutcome, AgentError> {
+        let Some((rt, folder)) = self.resolve(game_id) else {
+            return Ok(AgentOutcome::NotConfigured);
+        };
+        let restored = rt
+            .engine
+            .restore_version(game_id, version, &folder, now_ms)?;
+        save_state(rt)?;
+        Ok(AgentOutcome::Restored { version: restored })
     }
 }
 
@@ -383,6 +424,90 @@ mod tests {
         assert_eq!(
             std::fs::read(folder.join("world.db")).unwrap(),
             b"remote save"
+        );
+    }
+
+    #[test]
+    fn handle_resolve_take_remote_overwrites_local() {
+        use salvae_sync::engine::{PushOutcome, Resolution};
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+        write(&folder, "world.db", b"my diverged");
+
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"the remote save");
+
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+        let outcome = agent
+            .handle_resolve("steam:1", Resolution::TakeRemote, 300)
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            AgentOutcome::Closed {
+                push: PushOutcome::NoChange(1)
+            }
+        ));
+        assert_eq!(
+            std::fs::read(folder.join("world.db")).unwrap(),
+            b"the remote save"
+        );
+    }
+
+    #[test]
+    fn history_lists_versions_and_restore_writes_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"v1"); // version 1
+
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+
+        // Open first so the local save is based on v1, then a normal close
+        // pushes a clean version 2 (not a stale-overwrite conflict).
+        agent.handle_open("steam:1", 150).unwrap();
+        write(&folder, "world.db", b"v2");
+        agent.handle_close("steam:1", 200).unwrap();
+
+        let versions = agent.history("steam:1").unwrap();
+        assert_eq!(
+            versions.iter().map(|v| v.number).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+
+        // Restore version 1 over the folder.
+        let outcome = agent.restore("steam:1", 1, 300).unwrap();
+        assert!(matches!(outcome, AgentOutcome::Restored { version } if version.number == 1));
+        assert_eq!(std::fs::read(folder.join("world.db")).unwrap(), b"v1");
+    }
+
+    #[test]
+    fn history_for_unconfigured_game_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = agent_for(
+            InMemoryChannel::new(),
+            &dir.path().join("save"),
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+        assert!(agent.history("steam:999").unwrap().is_empty());
+        assert_eq!(
+            agent.restore("steam:999", 1, 100).unwrap(),
+            AgentOutcome::NotConfigured
         );
     }
 }
