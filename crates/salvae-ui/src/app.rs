@@ -154,6 +154,7 @@ impl SalvaeApp {
         egui::Window::new("Create group")
             .collapsible(false)
             .resizable(false)
+            .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .open(&mut open)
             .show(ctx, |ui| {
@@ -267,6 +268,7 @@ impl SalvaeApp {
         egui::Window::new("Join group")
             .collapsible(false)
             .resizable(false)
+            .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .open(&mut open)
             .show(ctx, |ui| {
@@ -419,6 +421,7 @@ impl SalvaeApp {
         egui::Window::new("Save conflict")
             .collapsible(false)
             .resizable(false)
+            .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 ui.label(format!(
@@ -462,6 +465,23 @@ impl SalvaeApp {
                 }
             });
     }
+}
+
+/// Paint a full-window dim layer that swallows input, so the panels behind an
+/// open dialog can't be interacted with (egui 0.29 has no built-in modal). The
+/// dialog windows are drawn afterwards on the same foreground order, so they
+/// sit above this shield.
+fn modal_shield(ctx: &egui::Context) {
+    let screen = ctx.screen_rect();
+    egui::Area::new(egui::Id::new("modal_shield"))
+        .order(egui::Order::Foreground)
+        .fixed_pos(screen.min)
+        .show(ctx, |ui| {
+            ui.painter()
+                .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
+            // Consume any click/drag so it never reaches the panels below.
+            ui.allocate_rect(screen, egui::Sense::click_and_drag());
+        });
 }
 
 /// A picker item with a numeric id and a display name (server or channel).
@@ -538,13 +558,15 @@ impl eframe::App for SalvaeApp {
             egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
 
         egui::SidePanel::left("groups")
-            .default_width(264.0)
+            .resizable(false)
+            .exact_width(264.0)
             .frame(side_frame)
             .show(ctx, |ui| {
                 self.groups_panel(ui);
             });
         egui::TopBottomPanel::bottom("activity")
-            .default_height(150.0)
+            .resizable(false)
+            .exact_height(150.0)
             .frame(side_frame)
             .show(ctx, |ui| {
                 self.activity_panel(ui);
@@ -554,6 +576,13 @@ impl eframe::App for SalvaeApp {
             .show(ctx, |ui| {
                 self.games_panel(ui);
             });
+
+        // Dim + block the panels behind any open dialog.
+        let modal_open =
+            self.forms.show_create || self.forms.show_join || !self.vm.pending_conflicts.is_empty();
+        if modal_open {
+            modal_shield(ctx);
+        }
         self.create_modal(ctx);
         self.join_modal(ctx);
         self.conflict_modal(ctx);
