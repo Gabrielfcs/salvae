@@ -13,6 +13,10 @@ pub enum AgentOutcome {
     },
     /// Game closed: the push result (which may be a `Conflict` for the UI).
     Closed { push: PushOutcome },
+    /// A specific past version was restored into the save folder.
+    Restored {
+        version: salvae_core::version::SaveVersion,
+    },
     /// The game is not configured in any group (detected but intentionally ignored).
     NotConfigured,
     /// The configured save folder does not exist, so there was nothing to push.

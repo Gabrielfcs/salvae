@@ -978,6 +978,7 @@ name = "salvae-agent"
 version = "0.1.0"
 dependencies = [
  "salvae-config",
+ "salvae-core",
  "salvae-detect",
  "salvae-discord",
  "salvae-sync",

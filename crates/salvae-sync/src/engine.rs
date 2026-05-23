@@ -102,7 +102,7 @@ impl<C: Channel> SyncEngine<C> {
             return Ok(());
         }
         let packed = pack::pack_folder(save_folder)?;
-        let dir = self.backups_dir.join(game_id);
+        let dir = self.backups_dir.join(sanitize_component(game_id));
         std::fs::create_dir_all(&dir).map_err(|e| SyncError::Io(e.to_string()))?;
         std::fs::write(dir.join(format!("{now_ms}.svpk")), &packed)
             .map_err(|e| SyncError::Io(e.to_string()))
@@ -217,6 +217,33 @@ impl<C: Channel> SyncEngine<C> {
         }
     }
 
+    /// List all stored versions of `game_id`, oldest first.
+    pub fn list_versions(&self, game_id: &str) -> Result<Vec<SaveVersion>, SyncError> {
+        Ok(self.vault().list_versions(game_id)?)
+    }
+
+    /// Restore a specific `version` of `game_id` into `save_folder` (backing up
+    /// the current local contents first). Returns the restored version's metadata.
+    ///
+    /// This deliberately points the sync state at the restored version, so if it
+    /// is not the latest, the next close will surface a conflict for the user.
+    pub fn restore_version(
+        &mut self,
+        game_id: &str,
+        version: u64,
+        save_folder: &Path,
+        now_ms: u64,
+    ) -> Result<SaveVersion, SyncError> {
+        let target = self
+            .vault()
+            .list_versions(game_id)?
+            .into_iter()
+            .find(|v| v.number == version)
+            .ok_or(salvae_vault::VaultError::NotFound)?;
+        self.apply_version(game_id, save_folder, &target, now_ms)?;
+        Ok(target)
+    }
+
     /// Post a "currently playing" marker for `game_id` (expires after the TTL).
     pub fn begin_playing(&self, game_id: &str, now_ms: u64) -> Result<(), SyncError> {
         let record = PlayingRecord {
@@ -308,6 +335,21 @@ fn clear_folder(path: &Path) -> Result<(), SyncError> {
     Ok(())
 }
 
+/// Make a game id safe to use as a single filesystem path component. Real ids
+/// like `steam:892970` contain `:`, which is illegal in Windows path names, so
+/// any character that is not alphanumeric, `-`, `_`, or `.` becomes `_`.
+fn sanitize_component(id: &str) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,6 +407,38 @@ mod tests {
             engine.pull("valheim", folder.path(), 300).unwrap(),
             PullOutcome::AlreadyUpToDate(1)
         );
+    }
+
+    #[test]
+    fn pull_over_existing_folder_backs_up_with_colon_game_id() {
+        // Real ids contain `:` (`steam:892970`), which is illegal in Windows
+        // path names. Backing up an existing folder must still succeed.
+        let channel = InMemoryChannel::new();
+        let backups = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+
+        let src = tempfile::tempdir().unwrap();
+        write(src.path(), "world.db", b"remote");
+        let packed = pack::pack_folder(src.path()).unwrap();
+        Vault::new(&channel, [1u8; 32])
+            .push_version("steam:892970", &packed, "owner", "dev-owner", 100, 5)
+            .unwrap();
+
+        // The local folder already has a (diverged) save to be backed up.
+        write(folder.path(), "world.db", b"local");
+
+        let mut engine = SyncEngine::new(&channel, [1u8; 32], "me", "dev-1", 5, backups.path());
+        let outcome = engine.pull("steam:892970", folder.path(), 200).unwrap();
+        assert!(matches!(outcome, PullOutcome::Applied(v) if v.number == 1));
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"remote"
+        );
+
+        // A backup was written under a sanitized (colon-free) directory.
+        let backup_dir = backups.path().join("steam_892970");
+        assert!(backup_dir.is_dir());
+        assert_eq!(std::fs::read_dir(&backup_dir).unwrap().count(), 1);
     }
 
     #[test]
@@ -511,5 +585,78 @@ mod tests {
         let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b.path());
         me.begin_playing("valheim", 1000).unwrap();
         assert!(me.who_is_playing("valheim", 1000).unwrap().is_empty());
+    }
+
+    fn engine_over<'a>(
+        channel: &'a InMemoryChannel,
+        backups: &std::path::Path,
+    ) -> SyncEngine<&'a InMemoryChannel> {
+        SyncEngine::new(
+            channel,
+            [5u8; 32],
+            "tester",
+            "dev",
+            5,
+            backups.to_path_buf(),
+        )
+    }
+
+    fn seed(channel: &InMemoryChannel, game_id: &str, content: &[u8]) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("world.db"), content).unwrap();
+        let packed = crate::pack::pack_folder(dir.path()).unwrap();
+        Vault::new(channel, [5u8; 32])
+            .push_version(game_id, &packed, "seed", "seed-dev", 1, 5)
+            .unwrap();
+    }
+
+    #[test]
+    fn list_versions_returns_history_in_order() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"v1 content");
+        seed(&channel, "game", b"v2 content");
+        let backups = tempfile::tempdir().unwrap();
+        let engine = engine_over(&channel, backups.path());
+        assert_eq!(
+            engine
+                .list_versions("game")
+                .unwrap()
+                .iter()
+                .map(|v| v.number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn restore_version_writes_that_version_to_the_folder() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"day one");
+        seed(&channel, "game", b"day two");
+        let backups = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+
+        let folder = tempfile::tempdir().unwrap();
+        let restored = engine
+            .restore_version("game", 1, folder.path(), 100)
+            .unwrap();
+        assert_eq!(restored.number, 1);
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"day one"
+        );
+    }
+
+    #[test]
+    fn restore_missing_version_is_not_found() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"only one");
+        let backups = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+        let folder = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            engine.restore_version("game", 99, folder.path(), 100),
+            Err(SyncError::Vault(salvae_vault::VaultError::NotFound))
+        ));
     }
 }

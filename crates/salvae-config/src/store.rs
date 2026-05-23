@@ -134,6 +134,26 @@ impl<S: SecretStore> ConfigStore<S> {
         self.secrets.remove(group_id)?;
         self.save()
     }
+
+    /// Set (or replace) the local save folder for `game_id` in `group_id`, then
+    /// persist. Errors if the group is unknown.
+    pub fn set_game_path(
+        &mut self,
+        group_id: &str,
+        game_id: &str,
+        folder: &str,
+    ) -> Result<(), ConfigError> {
+        let group = self
+            .config
+            .groups
+            .iter_mut()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))?;
+        group
+            .game_paths
+            .insert(game_id.to_string(), folder.to_string());
+        self.save()
+    }
 }
 
 /// Generate a random lowercase-hex id of `bytes` random bytes.
@@ -255,6 +275,45 @@ mod tests {
         assert!(store.groups().is_empty());
         assert!(matches!(
             store.group_secret(&group.id),
+            Err(ConfigError::GroupNotFound(_))
+        ));
+    }
+
+    #[test]
+    fn set_game_path_records_and_persists_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let group = {
+            let mut store =
+                ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+            let g = store.create_group("Crew", "pw", "tok", 1, 2).unwrap().0;
+            store
+                .set_game_path(
+                    &g.id,
+                    "steam:892970",
+                    "C:/Users/me/AppData/LocalLow/Valheim",
+                )
+                .unwrap();
+            g
+        };
+
+        // Reload: the game path is persisted on the right group.
+        let reloaded = ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+        let stored = reloaded.groups().iter().find(|g| g.id == group.id).unwrap();
+        assert_eq!(
+            stored.game_paths.get("steam:892970").map(String::as_str),
+            Some("C:/Users/me/AppData/LocalLow/Valheim")
+        );
+    }
+
+    #[test]
+    fn set_game_path_for_unknown_group_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store =
+            ConfigStore::load_or_default(dir.path().join("c.toml"), InMemorySecretStore::new())
+                .unwrap();
+        assert!(matches!(
+            store.set_game_path("nope", "steam:1", "C:/x"),
             Err(ConfigError::GroupNotFound(_))
         ));
     }
