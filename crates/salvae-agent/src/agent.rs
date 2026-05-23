@@ -81,6 +81,22 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         save_state(rt)?;
         Ok(AgentOutcome::Closed { push })
     }
+
+    /// Poll processes once, turn detected game open/close events into sync
+    /// actions, and return each event with its outcome.
+    pub fn tick(&mut self, now_ms: u64) -> Result<Vec<(GameEvent, AgentOutcome)>, AgentError> {
+        let process_events = self.watcher.poll()?;
+        let game_events = self.detector.process(&process_events);
+        let mut results = Vec::new();
+        for event in game_events {
+            let outcome = match &event {
+                GameEvent::Opened { game_id } => self.handle_open(game_id, now_ms)?,
+                GameEvent::Closed { game_id } => self.handle_close(game_id, now_ms)?,
+            };
+            results.push((event, outcome));
+        }
+        Ok(results)
+    }
 }
 
 /// Persist a group's current sync state to its state file.
@@ -271,5 +287,45 @@ mod tests {
         );
         let outcome = agent.handle_close("steam:1", 200).unwrap();
         assert!(matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Conflict { remote } } if remote.number == 1));
+    }
+
+    #[test]
+    fn tick_pulls_when_a_configured_game_launches() {
+        use salvae_sync::engine::PullOutcome;
+        use salvae_watch::detector::GameEvent;
+        use salvae_watch::process::ProcessInfo;
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"remote save");
+
+        // Frame 1: no game. Frame 2: the game's exe (under its install dir) runs.
+        let frames = vec![
+            vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+            vec![
+                ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() },
+                ProcessInfo { pid: 9, exe_path: "C:/Steam/common/Valheim/valheim.exe".into() },
+            ],
+        ];
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            frames,
+        );
+
+        // Tick 1: explorer only -> no game events.
+        assert!(agent.tick(100).unwrap().is_empty());
+
+        // Tick 2: Valheim launches -> GameOpened -> pull applied.
+        let results = agent.tick(200).unwrap();
+        assert_eq!(results.len(), 1);
+        let (event, outcome) = &results[0];
+        assert_eq!(event, &GameEvent::Opened { game_id: "steam:1".into() });
+        assert!(matches!(outcome, AgentOutcome::Opened { pull: PullOutcome::Applied(_), .. }));
+        assert_eq!(std::fs::read(folder.join("world.db")).unwrap(), b"remote save");
     }
 }
