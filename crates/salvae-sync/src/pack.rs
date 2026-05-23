@@ -33,11 +33,17 @@ pub fn pack_folder(root: &Path) -> Result<Vec<u8>, SyncError> {
     Ok(out)
 }
 
-fn collect_files(root: &Path, dir: &Path, out: &mut Vec<(String, PathBuf)>) -> Result<(), SyncError> {
+fn collect_files(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(String, PathBuf)>,
+) -> Result<(), SyncError> {
     for entry in std::fs::read_dir(dir).map_err(|e| SyncError::Io(e.to_string()))? {
         let entry = entry.map_err(|e| SyncError::Io(e.to_string()))?;
         let path = entry.path();
-        let ft = entry.file_type().map_err(|e| SyncError::Io(e.to_string()))?;
+        let ft = entry
+            .file_type()
+            .map_err(|e| SyncError::Io(e.to_string()))?;
         if ft.is_dir() {
             collect_files(root, &path, out)?;
         } else if ft.is_file() {
@@ -67,9 +73,13 @@ pub fn unpack_folder(data: &[u8], dest: &Path) -> Result<(), SyncError> {
 
         let rel_path = Path::new(rel_str);
         if rel_path.is_absolute()
-            || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+            || rel_path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
         {
-            return Err(SyncError::Pack(format!("unsafe path in archive: {rel_str:?}")));
+            return Err(SyncError::Pack(format!(
+                "unsafe path in archive: {rel_str:?}"
+            )));
         }
         let target = dest.join(rel_path);
         if let Some(parent) = target.parent() {
@@ -91,7 +101,9 @@ fn read_u64(data: &[u8], cur: &mut usize) -> Result<u64, SyncError> {
 }
 
 fn read_slice<'a>(data: &'a [u8], cur: &mut usize, len: usize) -> Result<&'a [u8], SyncError> {
-    let end = cur.checked_add(len).ok_or_else(|| SyncError::Pack("length overflow".into()))?;
+    let end = cur
+        .checked_add(len)
+        .ok_or_else(|| SyncError::Pack("length overflow".into()))?;
     if end > data.len() {
         return Err(SyncError::Pack("unexpected end of archive".into()));
     }
@@ -120,8 +132,14 @@ mod tests {
 
         let dst = tempfile::tempdir().unwrap();
         unpack_folder(&blob, dst.path()).unwrap();
-        assert_eq!(std::fs::read(dst.path().join("world.db")).unwrap(), b"main save");
-        assert_eq!(std::fs::read(dst.path().join("meta/info.txt")).unwrap(), b"v=3");
+        assert_eq!(
+            std::fs::read(dst.path().join("world.db")).unwrap(),
+            b"main save"
+        );
+        assert_eq!(
+            std::fs::read(dst.path().join("meta/info.txt")).unwrap(),
+            b"v=3"
+        );
     }
 
     #[test]
@@ -138,7 +156,10 @@ mod tests {
     #[test]
     fn bad_magic_is_rejected() {
         let dst = tempfile::tempdir().unwrap();
-        assert!(matches!(unpack_folder(b"NOPE", dst.path()), Err(SyncError::Pack(_))));
+        assert!(matches!(
+            unpack_folder(b"NOPE", dst.path()),
+            Err(SyncError::Pack(_))
+        ));
     }
 
     #[test]
@@ -154,7 +175,10 @@ mod tests {
         blob.extend_from_slice(b"bad");
 
         let dst = tempfile::tempdir().unwrap();
-        assert!(matches!(unpack_folder(&blob, dst.path()), Err(SyncError::Pack(_))));
+        assert!(matches!(
+            unpack_folder(&blob, dst.path()),
+            Err(SyncError::Pack(_))
+        ));
         assert!(!dst.path().parent().unwrap().join("escape.txt").exists());
     }
 }

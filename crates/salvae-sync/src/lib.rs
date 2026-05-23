@@ -30,7 +30,10 @@ mod error_tests {
 
     #[test]
     fn error_messages_are_human_readable() {
-        assert_eq!(SyncError::Pack("boom".into()).to_string(), "pack error: boom");
+        assert_eq!(
+            SyncError::Pack("boom".into()).to_string(),
+            "pack error: boom"
+        );
         assert_eq!(SyncError::Io("disk".into()).to_string(), "io error: disk");
     }
 

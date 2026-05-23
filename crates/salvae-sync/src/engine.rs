@@ -168,7 +168,12 @@ impl<C: Channel> SyncEngine<C> {
     }
 
     /// Upload `packed` as a new version and record it in the sync state.
-    fn do_push(&mut self, game_id: &str, packed: &[u8], now_ms: u64) -> Result<PushOutcome, SyncError> {
+    fn do_push(
+        &mut self,
+        game_id: &str,
+        packed: &[u8],
+        now_ms: u64,
+    ) -> Result<PushOutcome, SyncError> {
         let version = self.vault().push_version(
             game_id,
             packed,
@@ -219,7 +224,11 @@ impl<C: Channel> SyncEngine<C> {
     }
 
     /// List active "playing" markers for `game_id` posted by OTHER devices.
-    pub fn who_is_playing(&self, game_id: &str, now_ms: u64) -> Result<Vec<PlayingRecord>, SyncError> {
+    pub fn who_is_playing(
+        &self,
+        game_id: &str,
+        now_ms: u64,
+    ) -> Result<Vec<PlayingRecord>, SyncError> {
         let mut out = Vec::new();
         let mut before = None;
         loop {
@@ -231,7 +240,9 @@ impl<C: Channel> SyncEngine<C> {
             let full = page.len() == SCAN_PAGE as usize;
             for msg in page {
                 if let Some(rec) = PlayingRecord::parse(&msg.content) {
-                    if rec.game_id == game_id && rec.device_id != self.device_id && rec.is_active(now_ms)
+                    if rec.game_id == game_id
+                        && rec.device_id != self.device_id
+                        && rec.is_active(now_ms)
                     {
                         out.push(rec);
                     }
@@ -314,7 +325,10 @@ mod tests {
             5,
             backups.path(),
         );
-        assert_eq!(engine.pull("valheim", folder.path(), 1).unwrap(), PullOutcome::NoRemoteSave);
+        assert_eq!(
+            engine.pull("valheim", folder.path(), 1).unwrap(),
+            PullOutcome::NoRemoteSave
+        );
     }
 
     #[test]
@@ -331,11 +345,13 @@ mod tests {
             .push_version("valheim", &packed, "owner", "dev-owner", 100, 5)
             .unwrap();
 
-        let mut engine =
-            SyncEngine::new(&channel, [1u8; 32], "me", "dev-1", 5, backups.path());
+        let mut engine = SyncEngine::new(&channel, [1u8; 32], "me", "dev-1", 5, backups.path());
         let outcome = engine.pull("valheim", folder.path(), 200).unwrap();
         assert!(matches!(outcome, PullOutcome::Applied(v) if v.number == 1));
-        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"day 3");
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"day 3"
+        );
 
         // Pulling again is a no-op (already up to date).
         assert_eq!(
@@ -368,8 +384,14 @@ mod tests {
         // Friend pulls v1, edits, pushes v2.
         let friend_backups = tempfile::tempdir().unwrap();
         let friend_folder = tempfile::tempdir().unwrap();
-        let mut friend =
-            SyncEngine::new(&channel, [2u8; 32], "friend", "dev-friend", 5, friend_backups.path());
+        let mut friend = SyncEngine::new(
+            &channel,
+            [2u8; 32],
+            "friend",
+            "dev-friend",
+            5,
+            friend_backups.path(),
+        );
         friend.pull("valheim", friend_folder.path(), 200).unwrap();
         write(friend_folder.path(), "world.db", b"friend day2");
         assert!(matches!(
@@ -394,8 +416,10 @@ mod tests {
         write(&s1, "world.db", b"owner day1");
         write(&s2, "world.db", b"friend day2");
         let v = Vault::new(&channel, [3u8; 32]);
-        v.push_version("valheim", &pack::pack_folder(&s1).unwrap(), "o", "do", 1, 5).unwrap();
-        v.push_version("valheim", &pack::pack_folder(&s2).unwrap(), "f", "df", 2, 5).unwrap();
+        v.push_version("valheim", &pack::pack_folder(&s1).unwrap(), "o", "do", 1, 5)
+            .unwrap();
+        v.push_version("valheim", &pack::pack_folder(&s2).unwrap(), "f", "df", 2, 5)
+            .unwrap();
         (channel, tmp)
     }
 
@@ -414,7 +438,10 @@ mod tests {
             .unwrap();
         assert!(matches!(out, PushOutcome::Pushed(v) if v.number == 3));
         // Local content unchanged by PushLocal.
-        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"owner day2 diverged");
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"owner day2 diverged"
+        );
     }
 
     #[test]
@@ -431,8 +458,16 @@ mod tests {
             .unwrap();
         assert!(matches!(out, PushOutcome::NoChange(2)));
         // Local now holds the remote v2 content; the old local was backed up.
-        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"friend day2");
-        assert!(std::fs::read_dir(backups.path().join("valheim")).unwrap().count() >= 1);
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"friend day2"
+        );
+        assert!(
+            std::fs::read_dir(backups.path().join("valheim"))
+                .unwrap()
+                .count()
+                >= 1
+        );
     }
 
     #[test]
@@ -452,7 +487,10 @@ mod tests {
         assert_eq!(playing[0].member, "friend");
 
         // After the TTL, the marker is no longer active.
-        assert!(me.who_is_playing("valheim", 1000 + PLAYING_TTL_MS).unwrap().is_empty());
+        assert!(me
+            .who_is_playing("valheim", 1000 + PLAYING_TTL_MS)
+            .unwrap()
+            .is_empty());
 
         // Friend stops; their marker is removed.
         friend.end_playing("valheim").unwrap();

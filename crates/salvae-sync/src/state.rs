@@ -38,7 +38,8 @@ impl SyncState {
     /// Persist state to `path` (creating parent dirs).
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), SyncError> {
         let path = path.as_ref();
-        let text = serde_json::to_string_pretty(self).map_err(|e| SyncError::Serde(e.to_string()))?;
+        let text =
+            serde_json::to_string_pretty(self).map_err(|e| SyncError::Serde(e.to_string()))?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| SyncError::Io(e.to_string()))?;
         }
