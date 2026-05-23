@@ -6,6 +6,7 @@ pub mod kdf;
 pub mod cipher;
 pub mod compress;
 pub mod chunk;
+pub mod hash;
 
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
