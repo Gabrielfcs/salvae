@@ -72,6 +72,36 @@ impl DiscordChannel {
             serde_json::from_str(&body).map_err(|e| VaultError::Transport(e.to_string()))?;
         parse::parse_messages(&value)
     }
+
+    /// POST a new message with `content` and the given binary attachments,
+    /// using a multipart body. Returns the created message.
+    pub fn create_message(
+        &self,
+        content: &str,
+        attachments: &[(String, Vec<u8>)],
+    ) -> Result<Message, VaultError> {
+        let meta: Vec<serde_json::Value> = attachments
+            .iter()
+            .enumerate()
+            .map(|(i, (name, _))| serde_json::json!({ "id": i, "filename": name }))
+            .collect();
+        let payload = serde_json::json!({ "content": content, "attachments": meta }).to_string();
+
+        let boundary = random_boundary();
+        let body = multipart::build_form_data(&boundary, &payload, attachments);
+        let content_type = multipart::content_type(&boundary);
+        let url = format!("{}/channels/{}/messages", self.base_url, self.channel_id);
+
+        let resp = execute_with_retry(self.max_retries, Self::sleep_secs, || {
+            self.authed(self.agent.post(&url))
+                .set("Content-Type", &content_type)
+                .send_bytes(&body)
+        })?;
+        let resp_body = resp.into_string().map_err(|e| VaultError::Transport(e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&resp_body).map_err(|e| VaultError::Transport(e.to_string()))?;
+        parse::parse_message(&value)
+    }
 }
 
 #[cfg(test)]
@@ -116,4 +146,33 @@ mod tests {
         m.assert();
         assert!(msgs.is_empty());
     }
+
+    #[test]
+    fn create_message_sends_multipart_and_parses_response() {
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("POST", "/channels/123/messages")
+            .match_header("authorization", "Bot tok")
+            .match_header("content-type", mockito::Matcher::Regex("multipart/form-data".to_string()))
+            .with_status(200)
+            .with_body(r#"{"id":"55","content":"hdr","attachments":[{"id":"1","filename":"chunk_0.bin","url":"http://x"}]}"#)
+            .create();
+
+        let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
+        let msg = ch
+            .create_message("hdr", &[("chunk_0.bin".to_string(), vec![1u8, 2, 3])])
+            .unwrap();
+        m.assert();
+        assert_eq!(msg.id, 55);
+        assert_eq!(msg.attachments.len(), 1);
+        assert_eq!(msg.attachments[0].filename, "chunk_0.bin");
+    }
+}
+
+/// A random multipart boundary unlikely to appear in any attachment bytes.
+fn random_boundary() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).expect("OS RNG failure");
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("salvaeboundary{hex}")
 }
