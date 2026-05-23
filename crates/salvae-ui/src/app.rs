@@ -142,6 +142,7 @@ impl SalvaeApp {
         self.forms.create_channel = None;
         self.vm.discovered_guilds.clear();
         self.vm.discovered_channels.clear();
+        self.vm.guilds_loaded = false;
     }
 
     /// The create-group dialog: paste a bot token, pick a server + channel, set
@@ -177,8 +178,12 @@ impl SalvaeApp {
                     );
                     let token = self.forms.new_token.trim().to_string();
                     if ui.button("Find servers").clicked() && !token.is_empty() {
+                        // Hide the pickers until this token is (re)validated.
                         self.forms.create_guild = None;
                         self.forms.create_channel = None;
+                        self.vm.guilds_loaded = false;
+                        self.vm.discovered_guilds.clear();
+                        self.vm.discovered_channels.clear();
                         self.send(Command::FetchGuilds { token });
                     }
                 });
@@ -187,53 +192,72 @@ impl SalvaeApp {
                         .color(theme::MUTED)
                         .small(),
                 );
-                ui.add_space(4.0);
 
-                // Server picker (populated by FetchGuilds).
-                let guilds = self.vm.discovered_guilds.clone();
-                let token = self.forms.new_token.trim().to_string();
-                ui.label("Server");
-                let prev_guild = self.forms.create_guild;
-                egui::ComboBox::from_id_salt("create_guild")
-                    .selected_text(label_for(
-                        &guilds,
-                        self.forms.create_guild,
-                        "Select a server",
-                    ))
-                    .show_ui(ui, |ui| {
-                        for g in &guilds {
-                            ui.selectable_value(&mut self.forms.create_guild, Some(g.id), &g.name);
+                // The server/channel pickers appear only after the token is
+                // validated (a successful "Find servers").
+                if self.vm.guilds_loaded {
+                    ui.add_space(4.0);
+                    if self.vm.discovered_guilds.is_empty() {
+                        ui.label(
+                            egui::RichText::new(
+                                "Token OK, but the bot isn't in any server yet. Add it, then retry.",
+                            )
+                            .color(theme::MUTED),
+                        );
+                    } else {
+                        // Server picker.
+                        let guilds = self.vm.discovered_guilds.clone();
+                        let token = self.forms.new_token.trim().to_string();
+                        ui.label("Server");
+                        let prev_guild = self.forms.create_guild;
+                        egui::ComboBox::from_id_salt("create_guild")
+                            .selected_text(label_for(
+                                &guilds,
+                                self.forms.create_guild,
+                                "Select a server",
+                            ))
+                            .show_ui(ui, |ui| {
+                                for g in &guilds {
+                                    ui.selectable_value(
+                                        &mut self.forms.create_guild,
+                                        Some(g.id),
+                                        &g.name,
+                                    );
+                                }
+                            });
+                        if self.forms.create_guild != prev_guild {
+                            self.forms.create_channel = None;
+                            if let Some(gid) = self.forms.create_guild {
+                                self.send(Command::FetchChannels {
+                                    token: token.clone(),
+                                    guild_id: gid,
+                                });
+                            }
                         }
-                    });
-                if self.forms.create_guild != prev_guild {
-                    self.forms.create_channel = None;
-                    if let Some(gid) = self.forms.create_guild {
-                        self.send(Command::FetchChannels {
-                            token: token.clone(),
-                            guild_id: gid,
-                        });
+
+                        // Channel picker (only once a server is chosen).
+                        if self.forms.create_guild.is_some() {
+                            let channels = self.vm.discovered_channels.clone();
+                            ui.add_space(4.0);
+                            ui.label("Channel");
+                            egui::ComboBox::from_id_salt("create_channel")
+                                .selected_text(label_for(
+                                    &channels,
+                                    self.forms.create_channel,
+                                    "Select a channel",
+                                ))
+                                .show_ui(ui, |ui| {
+                                    for c in &channels {
+                                        ui.selectable_value(
+                                            &mut self.forms.create_channel,
+                                            Some(c.id),
+                                            format!("# {}", c.name),
+                                        );
+                                    }
+                                });
+                        }
                     }
                 }
-                ui.add_space(4.0);
-
-                // Channel picker (populated by FetchChannels).
-                let channels = self.vm.discovered_channels.clone();
-                ui.label("Channel");
-                egui::ComboBox::from_id_salt("create_channel")
-                    .selected_text(label_for(
-                        &channels,
-                        self.forms.create_channel,
-                        "Select a channel",
-                    ))
-                    .show_ui(ui, |ui| {
-                        for c in &channels {
-                            ui.selectable_value(
-                                &mut self.forms.create_channel,
-                                Some(c.id),
-                                format!("# {}", c.name),
-                            );
-                        }
-                    });
                 ui.add_space(8.0);
 
                 let ready = !self.forms.new_name.trim().is_empty()

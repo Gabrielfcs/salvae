@@ -21,6 +21,9 @@ pub struct ViewModel {
     pub discovered_guilds: Vec<GuildView>,
     /// Channels of the picked server, for the create-group picker.
     pub discovered_channels: Vec<ChannelView>,
+    /// Whether a `FetchGuilds` has succeeded (token validated) — gates the
+    /// server/channel pickers in the create dialog.
+    pub guilds_loaded: bool,
     pub history: BTreeMap<String, Vec<VersionView>>,
     pub scan_armed: Vec<String>,
     pub scan_results: BTreeMap<String, Vec<DiscoveredCandidate>>,
@@ -39,6 +42,7 @@ impl ViewModel {
             Event::DiscoveredGuilds(g) => {
                 self.discovered_guilds = g;
                 self.discovered_channels.clear();
+                self.guilds_loaded = true;
             }
             Event::DiscoveredChannels(c) => self.discovered_channels = c,
             Event::Invite(s) => {
@@ -158,6 +162,7 @@ mod tests {
             name: "Crew".into(),
         }]));
         assert_eq!(vm.discovered_guilds.len(), 1);
+        assert!(vm.guilds_loaded);
         // Picking servers afresh clears any previously-listed channels.
         assert!(vm.discovered_channels.is_empty());
 
