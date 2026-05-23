@@ -96,7 +96,10 @@ mod tests {
         let a = Message {
             id: 7,
             content: "hi".into(),
-            attachments: vec![AttachmentRef { id: 0, filename: "chunk_0.bin".into() }],
+            attachments: vec![AttachmentRef {
+                id: 0,
+                filename: "chunk_0.bin".into(),
+            }],
         };
         let b = a.clone();
         assert_eq!(a, b);

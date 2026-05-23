@@ -25,7 +25,10 @@ pub struct InMemoryChannel {
 
 impl InMemoryChannel {
     pub fn new() -> Self {
-        Self { messages: RefCell::new(Vec::new()), next_id: RefCell::new(1) }
+        Self {
+            messages: RefCell::new(Vec::new()),
+            next_id: RefCell::new(1),
+        }
     }
 
     /// Number of messages currently stored (test helper).
@@ -60,7 +63,10 @@ impl Channel for InMemoryChannel {
                     .attachments
                     .iter()
                     .enumerate()
-                    .map(|(i, (filename, _))| AttachmentRef { id: i as u64, filename: filename.clone() })
+                    .map(|(i, (filename, _))| AttachmentRef {
+                        id: i as u64,
+                        filename: filename.clone(),
+                    })
                     .collect(),
             })
             .collect();
@@ -90,7 +96,10 @@ impl Channel for InMemoryChannel {
             attachments: attachments
                 .iter()
                 .enumerate()
-                .map(|(i, (filename, _))| AttachmentRef { id: i as u64, filename: filename.clone() })
+                .map(|(i, (filename, _))| AttachmentRef {
+                    id: i as u64,
+                    filename: filename.clone(),
+                })
                 .collect(),
         })
     }
@@ -101,7 +110,10 @@ impl Channel for InMemoryChannel {
         attachment: &AttachmentRef,
     ) -> Result<Vec<u8>, VaultError> {
         let messages = self.messages.borrow();
-        let msg = messages.iter().find(|m| m.id == message_id).ok_or(VaultError::NotFound)?;
+        let msg = messages
+            .iter()
+            .find(|m| m.id == message_id)
+            .ok_or(VaultError::NotFound)?;
         let found = msg
             .attachments
             .iter()
@@ -176,8 +188,14 @@ mod tests {
     #[test]
     fn download_missing_message_is_not_found() {
         let ch = InMemoryChannel::new();
-        let att = AttachmentRef { id: 0, filename: "x".into() };
-        assert!(matches!(ch.download_attachment(999, &att), Err(VaultError::NotFound)));
+        let att = AttachmentRef {
+            id: 0,
+            filename: "x".into(),
+        };
+        assert!(matches!(
+            ch.download_attachment(999, &att),
+            Err(VaultError::NotFound)
+        ));
     }
 
     #[test]

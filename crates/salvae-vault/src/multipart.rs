@@ -27,8 +27,10 @@ pub fn build_form_data(boundary: &str, payload_json: &str, files: &[(String, Vec
     for (i, (filename, bytes)) in files.iter().enumerate() {
         body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
         body.extend_from_slice(
-            format!("Content-Disposition: form-data; name=\"files[{i}]\"; filename=\"{filename}\"\r\n")
-                .as_bytes(),
+            format!(
+                "Content-Disposition: form-data; name=\"files[{i}]\"; filename=\"{filename}\"\r\n"
+            )
+            .as_bytes(),
         );
         body.extend_from_slice(b"Content-Type: application/octet-stream\r\n");
         body.extend_from_slice(crlf);

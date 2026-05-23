@@ -45,7 +45,10 @@ mod error_tests {
             VaultError::Integrity.to_string(),
             "downloaded save failed its integrity check (hash mismatch)"
         );
-        assert_eq!(VaultError::Transport("boom".into()).to_string(), "transport error: boom");
+        assert_eq!(
+            VaultError::Transport("boom".into()).to_string(),
+            "transport error: boom"
+        );
     }
 
     #[test]

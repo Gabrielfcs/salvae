@@ -20,9 +20,15 @@ fn coop_save_lifecycle_over_in_memory_channel() {
     let s2 = b"valheim world: day 2, built a base".to_vec();
     let s3 = b"valheim world: day 3, killed first boss".to_vec();
 
-    let v1 = vault.push_version("valheim", &s1, "Gabriel", "pc-gabriel", 1_000, 5).unwrap();
-    let v2 = vault.push_version("valheim", &s2, "Ana", "pc-ana", 2_000, 5).unwrap();
-    let v3 = vault.push_version("valheim", &s3, "Gabriel", "pc-gabriel", 3_000, 5).unwrap();
+    let v1 = vault
+        .push_version("valheim", &s1, "Gabriel", "pc-gabriel", 1_000, 5)
+        .unwrap();
+    let v2 = vault
+        .push_version("valheim", &s2, "Ana", "pc-ana", 2_000, 5)
+        .unwrap();
+    let v3 = vault
+        .push_version("valheim", &s3, "Gabriel", "pc-gabriel", 3_000, 5)
+        .unwrap();
     assert_eq!((v1.number, v2.number, v3.number), (1, 2, 3));
 
     // Another player pulls the latest before hosting.
@@ -43,12 +49,20 @@ fn pruning_bounds_history_and_keeps_newest() {
 
     for day in 1..=6u64 {
         let save = format!("save for day {day}").into_bytes();
-        vault.push_version("terraria", &save, "p", "d", day, 3).unwrap();
+        vault
+            .push_version("terraria", &save, "p", "d", day, 3)
+            .unwrap();
     }
 
     let versions = vault.list_versions("terraria").unwrap();
-    assert_eq!(versions.iter().map(|v| v.number).collect::<Vec<_>>(), vec![4, 5, 6]);
-    assert!(matches!(vault.download("terraria", 1), Err(VaultError::NotFound)));
+    assert_eq!(
+        versions.iter().map(|v| v.number).collect::<Vec<_>>(),
+        vec![4, 5, 6]
+    );
+    assert!(matches!(
+        vault.download("terraria", 1),
+        Err(VaultError::NotFound)
+    ));
     assert_eq!(
         vault.download("terraria", 6).unwrap(),
         b"save for day 6".to_vec()

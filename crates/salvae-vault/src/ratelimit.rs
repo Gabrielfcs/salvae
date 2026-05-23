@@ -18,7 +18,8 @@ pub fn retry_after_secs(status: u16, header: impl Fn(&str) -> Option<String>) ->
     if let Some(secs) = header("retry-after").and_then(|v| v.trim().parse::<f64>().ok()) {
         return Some(secs.max(0.0));
     }
-    if let Some(secs) = header("x-ratelimit-reset-after").and_then(|v| v.trim().parse::<f64>().ok()) {
+    if let Some(secs) = header("x-ratelimit-reset-after").and_then(|v| v.trim().parse::<f64>().ok())
+    {
         return Some(secs.max(0.0));
     }
     Some(DEFAULT_BACKOFF_SECS)
@@ -57,7 +58,10 @@ mod tests {
 
     #[test]
     fn falls_back_to_default_when_no_headers() {
-        assert_eq!(retry_after_secs(429, header_map(&[])), Some(DEFAULT_BACKOFF_SECS));
+        assert_eq!(
+            retry_after_secs(429, header_map(&[])),
+            Some(DEFAULT_BACKOFF_SECS)
+        );
     }
 
     #[test]
