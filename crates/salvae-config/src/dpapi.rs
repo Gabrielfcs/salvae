@@ -31,6 +31,11 @@ fn in_blob(data: &[u8]) -> CRYPT_INTEGER_BLOB {
 /// `out` must be a blob populated by a successful CryptProtectData /
 /// CryptUnprotectData call (its `pbData` was allocated by the OS).
 unsafe fn take_out_blob(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
+    // A successful DPAPI call always allocates a non-empty blob, but guard the
+    // null case anyway so `from_raw_parts` can never see a null pointer.
+    if out.pbData.is_null() {
+        return Vec::new();
+    }
     let bytes = std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec();
     LocalFree(out.pbData as *mut c_void);
     bytes
