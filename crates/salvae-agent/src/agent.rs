@@ -46,6 +46,15 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         }
     }
 
+    /// Replace the per-group runtimes (e.g. after a config change), keeping the
+    /// watcher and detector — and thus their live process/open-game state —
+    /// intact. Rebuilding the whole agent instead would reset that state and
+    /// can drop a real close-push or fire a spurious open-pull over a running
+    /// game.
+    pub fn set_groups(&mut self, groups: Vec<GroupRuntime<C>>) {
+        self.groups = groups;
+    }
+
     /// Find the group + configured save folder for `game_id`, if any.
     fn resolve(&mut self, game_id: &str) -> Option<(&mut GroupRuntime<C>, PathBuf)> {
         for rt in &mut self.groups {
@@ -509,5 +518,25 @@ mod tests {
             agent.restore("steam:999", 1, 100).unwrap(),
             AgentOutcome::NotConfigured
         );
+    }
+
+    #[test]
+    fn set_groups_swaps_the_configured_runtimes() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"v1");
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+        // The seeded group has steam:1 configured.
+        assert_eq!(agent.history("steam:1").unwrap().len(), 1);
+        // Replacing the runtimes with none drops that configuration.
+        agent.set_groups(vec![]);
+        assert!(agent.history("steam:1").unwrap().is_empty());
     }
 }

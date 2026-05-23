@@ -1,0 +1,38 @@
+//! The operations the worker needs, abstracted so the worker's dispatch logic
+//! is testable with a fake (the real impl is `AgentBackend`, Task 7).
+
+use crate::command::Event;
+use crate::view::{DiscoveredCandidate, GameView, GroupView, VersionView};
+
+/// Everything the background worker can ask of the backend. All fallible calls
+/// return `Result<_, String>` — the error string is shown verbatim in the UI.
+pub trait Backend {
+    /// Current groups (with their configured game→folder mappings).
+    fn refresh_groups(&self) -> Vec<GroupView>;
+    /// Games discovered on this machine.
+    fn installed_games(&self) -> Vec<GameView>;
+
+    fn create_group(
+        &mut self,
+        name: &str,
+        password: &str,
+        token: &str,
+        guild_id: u64,
+        channel_id: u64,
+    ) -> Result<String, String>;
+    fn join_group(&mut self, password: &str, invite: &str) -> Result<(), String>;
+    fn remove_group(&mut self, group_id: &str) -> Result<(), String>;
+    fn set_game_path(&mut self, group_id: &str, game_id: &str, folder: &str) -> Result<(), String>;
+
+    /// Capture the "before" snapshot for `game_id`.
+    fn arm_scan(&mut self, game_id: &str) -> Result<(), String>;
+    /// Diff + rank candidates for a previously armed `game_id`.
+    fn collect_scan(&mut self, game_id: &str) -> Result<Vec<DiscoveredCandidate>, String>;
+
+    fn history(&mut self, game_id: &str) -> Result<Vec<VersionView>, String>;
+    fn restore(&mut self, game_id: &str, version: u64) -> Result<(), String>;
+    fn resolve(&mut self, game_id: &str, take_remote: bool) -> Result<(), String>;
+
+    /// Poll the watch/sync loop once; return any activity/conflict events.
+    fn tick(&mut self) -> Vec<Event>;
+}
