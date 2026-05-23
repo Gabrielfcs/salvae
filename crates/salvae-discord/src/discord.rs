@@ -102,6 +102,29 @@ impl DiscordChannel {
             serde_json::from_str(&resp_body).map_err(|e| VaultError::Transport(e.to_string()))?;
         parse::parse_message(&value)
     }
+
+    /// Download the bytes of the attachment named `filename` on `message_id`.
+    /// Discord CDN URLs expire, so this re-fetches the message to obtain a
+    /// fresh URL, then downloads it.
+    pub fn fetch_attachment(&self, message_id: u64, filename: &str) -> Result<Vec<u8>, VaultError> {
+        let url = format!("{}/channels/{}/messages/{}", self.base_url, self.channel_id, message_id);
+        let resp = execute_with_retry(self.max_retries, Self::sleep_secs, || {
+            self.authed(self.agent.get(&url)).call()
+        })?;
+        let body = resp.into_string().map_err(|e| VaultError::Transport(e.to_string()))?;
+        let value: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| VaultError::Transport(e.to_string()))?;
+        let cdn_url = parse::attachment_url(&value, filename).ok_or(VaultError::NotFound)?;
+
+        let dl = execute_with_retry(self.max_retries, Self::sleep_secs, || {
+            self.agent.get(&cdn_url).call()
+        })?;
+        let mut buf = Vec::new();
+        dl.into_reader()
+            .read_to_end(&mut buf)
+            .map_err(|e| VaultError::Transport(e.to_string()))?;
+        Ok(buf)
+    }
 }
 
 #[cfg(test)]
@@ -166,6 +189,46 @@ mod tests {
         assert_eq!(msg.id, 55);
         assert_eq!(msg.attachments.len(), 1);
         assert_eq!(msg.attachments[0].filename, "chunk_0.bin");
+    }
+
+    #[test]
+    fn fetch_attachment_refetches_message_then_downloads_fresh_url() {
+        let mut server = mockito::Server::new();
+        let base = server.url();
+        // The message's attachment URL points back at the mock "CDN".
+        let msg_body = format!(
+            r#"{{"id":"55","content":"hdr","attachments":[{{"id":"1","filename":"chunk_0.bin","url":"{base}/cdn/chunk_0.bin"}}]}}"#
+        );
+        let m_msg = server
+            .mock("GET", "/channels/123/messages/55")
+            .with_status(200)
+            .with_body(msg_body)
+            .create();
+        let m_cdn = server
+            .mock("GET", "/cdn/chunk_0.bin")
+            .with_status(200)
+            .with_body(vec![9u8, 8, 7, 6])
+            .create();
+
+        let ch = DiscordChannel::new("tok", 123).with_base_url(base);
+        let bytes = ch.fetch_attachment(55, "chunk_0.bin").unwrap();
+        m_msg.assert();
+        m_cdn.assert();
+        assert_eq!(bytes, vec![9u8, 8, 7, 6]);
+    }
+
+    #[test]
+    fn fetch_attachment_missing_filename_is_not_found() {
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("GET", "/channels/123/messages/55")
+            .with_status(200)
+            .with_body(r#"{"id":"55","content":"h","attachments":[]}"#)
+            .create();
+        let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
+        let r = ch.fetch_attachment(55, "chunk_0.bin");
+        m.assert();
+        assert!(matches!(r, Err(VaultError::NotFound)));
     }
 }
 
