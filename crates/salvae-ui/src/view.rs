@@ -25,6 +25,20 @@ pub struct GameView {
     pub name: String,
 }
 
+/// A Discord guild (server) the bot can see, for the create-group picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GuildView {
+    pub id: u64,
+    pub name: String,
+}
+
+/// A Discord text channel, for the create-group picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChannelView {
+    pub id: u64,
+    pub name: String,
+}
+
 /// One stored save version, formatted for display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionView {

@@ -15,6 +15,7 @@ use salvae_detect::game::InstalledGame;
 use salvae_detect::roots::save_search_roots;
 use salvae_detect::{epic, steam};
 use salvae_discord::discord::DiscordChannel;
+use salvae_discord::discover::DiscordDiscovery;
 use salvae_sync::engine::{PushOutcome, Resolution, SyncEngine};
 use salvae_sync::state::SyncState;
 use salvae_watch::detector::{Detector, GameEvent};
@@ -25,7 +26,8 @@ use crate::backend::Backend;
 use crate::command::Event;
 use crate::discovery::{self, ArmedScan};
 use crate::view::{
-    ActivityView, DiscoveredCandidate, GameMapping, GameView, GroupView, VersionView,
+    ActivityView, ChannelView, DiscoveredCandidate, GameMapping, GameView, GroupView, GuildView,
+    VersionView,
 };
 
 type DiscordAgent = Agent<DiscordChannel, SystemProcessLister>;
@@ -191,6 +193,32 @@ impl Backend for AgentBackend {
                 name: g.name.clone(),
             })
             .collect()
+    }
+
+    fn fetch_guilds(&self, token: &str) -> Result<Vec<GuildView>, String> {
+        let guilds = DiscordDiscovery::new(token)
+            .list_guilds()
+            .map_err(|e| e.to_string())?;
+        Ok(guilds
+            .into_iter()
+            .map(|g| GuildView {
+                id: g.id,
+                name: g.name,
+            })
+            .collect())
+    }
+
+    fn fetch_channels(&self, token: &str, guild_id: u64) -> Result<Vec<ChannelView>, String> {
+        let channels = DiscordDiscovery::new(token)
+            .list_text_channels(guild_id)
+            .map_err(|e| e.to_string())?;
+        Ok(channels
+            .into_iter()
+            .map(|c| ChannelView {
+                id: c.id,
+                name: c.name,
+            })
+            .collect())
     }
 
     fn create_group(

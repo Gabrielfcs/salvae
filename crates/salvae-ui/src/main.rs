@@ -11,8 +11,7 @@ use eframe::egui;
 
 use salvae_ui::agent_backend::AgentBackend;
 use salvae_ui::app::SalvaeApp;
-use salvae_ui::tray;
-use salvae_ui::worker;
+use salvae_ui::{theme, tray, worker};
 
 /// Per-user Salvaê app directory (`%AppData%\salvae`).
 fn app_dir() -> PathBuf {
@@ -38,14 +37,22 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Salvaê")
-            .with_inner_size([900.0, 600.0]),
+            .with_inner_size([900.0, 600.0])
+            // Don't let the window shrink below the default opening size.
+            .with_min_inner_size([900.0, 600.0]),
+        // Restore the last window position/size on the next run (requires the
+        // eframe `persistence` feature). On by default, listed for clarity.
+        persist_window: true,
         ..Default::default()
     };
 
     eframe::run_native(
-        "Salvaê",
+        // App name → on-disk storage key for the persisted window geometry.
+        "salvae",
         options,
         Box::new(move |cc| {
+            theme::apply(&cc.egui_ctx);
+
             // Spawn the worker thread, waking the UI via the egui context.
             let ctx = cc.egui_ctx.clone();
             let ev_tx_worker = ev_tx;

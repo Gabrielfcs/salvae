@@ -13,6 +13,8 @@ pub mod agent_backend;
 #[cfg(not(test))]
 pub mod app;
 #[cfg(not(test))]
+pub mod theme;
+#[cfg(not(test))]
 pub mod tray;
 
 /// Errors surfaced by the UI layer.

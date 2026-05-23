@@ -6,18 +6,22 @@ use std::sync::mpsc::{Receiver, Sender};
 use eframe::egui;
 
 use crate::command::{Command, Event};
-use crate::view::{human_size, ActivityKind};
+use crate::theme;
+use crate::view::{human_size, ActivityKind, ChannelView, GuildView};
 use crate::viewmodel::ViewModel;
 
-/// Transient form state for the create/join group panels and selections.
+/// Transient form state for the create/join modals and selections.
 #[derive(Default)]
 struct Forms {
     selected_group: Option<String>,
+    show_create: bool,
+    show_join: bool,
     new_name: String,
     new_password: String,
     new_token: String,
-    new_guild: String,
-    new_channel: String,
+    /// Server/channel chosen from the token-discovered lists.
+    create_guild: Option<u64>,
+    create_channel: Option<u64>,
     join_password: String,
     join_invite: String,
 }
@@ -92,65 +96,227 @@ impl SalvaeApp {
 
     fn groups_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Groups");
+        ui.add_space(4.0);
+        if self.vm.groups.is_empty() {
+            ui.label(egui::RichText::new("No groups yet.").color(theme::MUTED));
+        }
         for g in &self.vm.groups {
             let selected = self.forms.selected_group.as_deref() == Some(&g.id);
             if ui.selectable_label(selected, &g.name).clicked() {
                 self.forms.selected_group = Some(g.id.clone());
             }
         }
-        ui.separator();
 
-        ui.collapsing("Create group", |ui| {
-            ui.label("Name");
-            ui.text_edit_singleline(&mut self.forms.new_name);
-            ui.label("Password");
-            ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
-            ui.label("Bot token");
-            ui.add(egui::TextEdit::singleline(&mut self.forms.new_token).password(true));
-            ui.label("Guild id");
-            ui.text_edit_singleline(&mut self.forms.new_guild);
-            ui.label("Channel id");
-            ui.text_edit_singleline(&mut self.forms.new_channel);
-            if ui.button("Create").clicked() {
-                if let (Ok(guild_id), Ok(channel_id)) = (
-                    self.forms.new_guild.trim().parse::<u64>(),
-                    self.forms.new_channel.trim().parse::<u64>(),
-                ) {
-                    self.send(Command::CreateGroup {
-                        name: self.forms.new_name.clone(),
-                        password: self.forms.new_password.clone(),
-                        token: self.forms.new_token.clone(),
-                        guild_id,
-                        channel_id,
-                    });
-                } else {
-                    // Surface in both the banner and the activity log.
-                    self.vm
-                        .apply(Event::Error("Guild/Channel id must be numbers".into()));
-                }
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            if theme::primary_button(ui, "+ Create group").clicked() {
+                self.reset_create_form();
+                self.forms.show_create = true;
             }
-        });
-
-        ui.collapsing("Join group", |ui| {
-            ui.label("Invite");
-            ui.text_edit_multiline(&mut self.forms.join_invite);
-            ui.label("Password");
-            ui.add(egui::TextEdit::singleline(&mut self.forms.join_password).password(true));
-            if ui.button("Join").clicked() {
-                self.send(Command::JoinGroup {
-                    password: self.forms.join_password.clone(),
-                    invite: self.forms.join_invite.clone(),
-                });
+            if ui.button("Join group").clicked() {
+                self.forms.join_password.clear();
+                self.forms.join_invite.clear();
+                self.forms.show_join = true;
             }
         });
 
         if let Some(invite) = self.vm.last_invite.clone() {
             ui.separator();
-            ui.label("Invite to share (also send the password out-of-band):");
+            ui.label(
+                egui::RichText::new("Invite to share (send the password out-of-band):")
+                    .color(theme::MUTED),
+            );
             ui.add(egui::TextEdit::multiline(&mut invite.clone()).desired_rows(2));
             if ui.button("Copy invite").clicked() {
                 ui.output_mut(|o| o.copied_text = invite);
             }
+        }
+    }
+
+    /// Clear the create-group form and any discovered servers/channels.
+    fn reset_create_form(&mut self) {
+        self.forms.new_name.clear();
+        self.forms.new_password.clear();
+        self.forms.new_token.clear();
+        self.forms.create_guild = None;
+        self.forms.create_channel = None;
+        self.vm.discovered_guilds.clear();
+        self.vm.discovered_channels.clear();
+        self.vm.guilds_loaded = false;
+    }
+
+    /// The create-group dialog: paste a bot token, pick a server + channel, set
+    /// a name + password. No ids are typed by hand.
+    fn create_modal(&mut self, ctx: &egui::Context) {
+        if !self.forms.show_create {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Create group")
+            .collapsible(false)
+            .resizable(false)
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.set_min_width(360.0);
+
+                ui.label("Group name");
+                ui.text_edit_singleline(&mut self.forms.new_name);
+                ui.add_space(4.0);
+
+                ui.label("Shared password");
+                ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
+                ui.add_space(4.0);
+
+                ui.label("Bot token");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.forms.new_token)
+                            .password(true)
+                            .desired_width(220.0),
+                    );
+                    let token = self.forms.new_token.trim().to_string();
+                    if ui.button("Find servers").clicked() && !token.is_empty() {
+                        // Hide the pickers until this token is (re)validated.
+                        self.forms.create_guild = None;
+                        self.forms.create_channel = None;
+                        self.vm.guilds_loaded = false;
+                        self.vm.discovered_guilds.clear();
+                        self.vm.discovered_channels.clear();
+                        self.send(Command::FetchGuilds { token });
+                    }
+                });
+                ui.label(
+                    egui::RichText::new("Add the bot to your server first, then paste its token.")
+                        .color(theme::MUTED)
+                        .small(),
+                );
+
+                // The server/channel pickers appear only after the token is
+                // validated (a successful "Find servers").
+                if self.vm.guilds_loaded {
+                    ui.add_space(4.0);
+                    if self.vm.discovered_guilds.is_empty() {
+                        ui.label(
+                            egui::RichText::new(
+                                "Token OK, but the bot isn't in any server yet. Add it, then retry.",
+                            )
+                            .color(theme::MUTED),
+                        );
+                    } else {
+                        // Server picker.
+                        let guilds = self.vm.discovered_guilds.clone();
+                        let token = self.forms.new_token.trim().to_string();
+                        ui.label("Server");
+                        let prev_guild = self.forms.create_guild;
+                        egui::ComboBox::from_id_salt("create_guild")
+                            .selected_text(label_for(
+                                &guilds,
+                                self.forms.create_guild,
+                                "Select a server",
+                            ))
+                            .show_ui(ui, |ui| {
+                                for g in &guilds {
+                                    ui.selectable_value(
+                                        &mut self.forms.create_guild,
+                                        Some(g.id),
+                                        &g.name,
+                                    );
+                                }
+                            });
+                        if self.forms.create_guild != prev_guild {
+                            self.forms.create_channel = None;
+                            if let Some(gid) = self.forms.create_guild {
+                                self.send(Command::FetchChannels {
+                                    token: token.clone(),
+                                    guild_id: gid,
+                                });
+                            }
+                        }
+
+                        // Channel picker (only once a server is chosen).
+                        if self.forms.create_guild.is_some() {
+                            let channels = self.vm.discovered_channels.clone();
+                            ui.add_space(4.0);
+                            ui.label("Channel");
+                            egui::ComboBox::from_id_salt("create_channel")
+                                .selected_text(label_for(
+                                    &channels,
+                                    self.forms.create_channel,
+                                    "Select a channel",
+                                ))
+                                .show_ui(ui, |ui| {
+                                    for c in &channels {
+                                        ui.selectable_value(
+                                            &mut self.forms.create_channel,
+                                            Some(c.id),
+                                            format!("# {}", c.name),
+                                        );
+                                    }
+                                });
+                        }
+                    }
+                }
+                ui.add_space(8.0);
+
+                let ready = !self.forms.new_name.trim().is_empty()
+                    && !self.forms.new_password.is_empty()
+                    && self.forms.create_guild.is_some()
+                    && self.forms.create_channel.is_some();
+                ui.add_enabled_ui(ready, |ui| {
+                    if theme::primary_button(ui, "Create group").clicked() {
+                        self.send(Command::CreateGroup {
+                            name: self.forms.new_name.clone(),
+                            password: self.forms.new_password.clone(),
+                            token: self.forms.new_token.clone(),
+                            guild_id: self.forms.create_guild.unwrap(),
+                            channel_id: self.forms.create_channel.unwrap(),
+                        });
+                        self.forms.show_create = false;
+                    }
+                });
+            });
+        // Honour the window's close (X) button.
+        if !open {
+            self.forms.show_create = false;
+        }
+    }
+
+    /// The join-group dialog: paste an invite + the shared password.
+    fn join_modal(&mut self, ctx: &egui::Context) {
+        if !self.forms.show_join {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Join group")
+            .collapsible(false)
+            .resizable(false)
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.set_min_width(360.0);
+                ui.label("Invite");
+                ui.add(egui::TextEdit::multiline(&mut self.forms.join_invite).desired_rows(3));
+                ui.add_space(4.0);
+                ui.label("Shared password");
+                ui.add(egui::TextEdit::singleline(&mut self.forms.join_password).password(true));
+                ui.add_space(8.0);
+                let ready = !self.forms.join_invite.trim().is_empty()
+                    && !self.forms.join_password.is_empty();
+                ui.add_enabled_ui(ready, |ui| {
+                    if theme::primary_button(ui, "Join group").clicked() {
+                        self.send(Command::JoinGroup {
+                            password: self.forms.join_password.clone(),
+                            invite: self.forms.join_invite.clone(),
+                        });
+                        self.forms.show_join = false;
+                    }
+                });
+            });
+        if !open {
+            self.forms.show_join = false;
         }
     }
 
@@ -176,17 +342,20 @@ impl SalvaeApp {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for game in &self.vm.installed_games {
                 let mapping = group.games.iter().find(|m| m.game_id == game.id);
-                ui.group(|ui| {
+                theme::card_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.strong(&game.name);
-                        ui.label(format!("({})", game.id));
+                        ui.label(egui::RichText::new(format!("({})", game.id)).color(theme::MUTED));
                     });
                     match mapping {
                         Some(m) => {
-                            ui.label(format!("Folder: {}", m.folder));
+                            ui.label(
+                                egui::RichText::new(format!("Folder: {}", m.folder))
+                                    .color(theme::MUTED),
+                            );
                         }
                         None => {
-                            ui.label("Folder: not set");
+                            ui.label(egui::RichText::new("Folder: not set").color(theme::MUTED));
                         }
                     }
 
@@ -206,7 +375,10 @@ impl SalvaeApp {
                                     game_id: game.id.clone(),
                                 });
                             }
-                            ui.label("scan armed: launch & close the game");
+                            ui.label(
+                                egui::RichText::new("scan armed — launch & close the game")
+                                    .color(theme::MUTED),
+                            );
                         } else if ui.button("Auto-find save (scan)").clicked() {
                             self.send(Command::ArmScan {
                                 game_id: game.id.clone(),
@@ -220,7 +392,8 @@ impl SalvaeApp {
                     });
 
                     if let Some(cands) = self.vm.scan_results.get(&game.id) {
-                        ui.label("Candidate save folders:");
+                        ui.add_space(4.0);
+                        ui.strong("Candidate save folders");
                         for c in cands {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
@@ -240,7 +413,8 @@ impl SalvaeApp {
                     }
 
                     if let Some(versions) = self.vm.history.get(&game.id) {
-                        ui.label("Versions:");
+                        ui.add_space(4.0);
+                        ui.strong("Versions");
                         for v in versions.iter().rev() {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
@@ -259,6 +433,7 @@ impl SalvaeApp {
                         }
                     }
                 });
+                ui.add_space(8.0);
             }
         });
     }
@@ -270,15 +445,20 @@ impl SalvaeApp {
         egui::Window::new("Save conflict")
             .collapsible(false)
             .resizable(false)
+            .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 ui.label(format!(
                     "A newer save exists for {} (version {} by {}).",
                     conflict.game_id, conflict.remote.number, conflict.remote.author
                 ));
-                ui.label("Overwriting it may lose progress.");
+                ui.label(
+                    egui::RichText::new("Overwriting it may lose progress.")
+                        .color(egui::Color32::from_rgb(245, 158, 11)),
+                );
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Keep the newer remote save").clicked() {
+                    if theme::primary_button(ui, "Keep the newer remote save").clicked() {
                         self.send(Command::Resolve {
                             game_id: conflict.game_id.clone(),
                             take_remote: true,
@@ -301,13 +481,65 @@ impl SalvaeApp {
             .show(ui, |ui| {
                 for a in &self.vm.activity {
                     let color = match a.kind {
-                        ActivityKind::Info => egui::Color32::GRAY,
-                        ActivityKind::Warning => egui::Color32::YELLOW,
-                        ActivityKind::Error => egui::Color32::LIGHT_RED,
+                        ActivityKind::Info => theme::MUTED,
+                        ActivityKind::Warning => egui::Color32::from_rgb(245, 158, 11), // amber-500
+                        ActivityKind::Error => egui::Color32::from_rgb(239, 68, 68),    // red-500
                     };
                     ui.colored_label(color, &a.message);
                 }
             });
+    }
+}
+
+/// Paint a full-window dim layer behind an open dialog so the panels can't be
+/// interacted with (egui 0.29 has no built-in modal). Sits on `Middle` order —
+/// strictly below the dialog windows (`Foreground`) so it never covers them.
+/// Returns `true` if the backdrop itself was clicked (dismiss the dialog).
+fn modal_shield(ctx: &egui::Context) -> bool {
+    let screen = ctx.screen_rect();
+    egui::Area::new(egui::Id::new("modal_shield"))
+        .order(egui::Order::Middle)
+        .fixed_pos(screen.min)
+        .show(ctx, |ui| {
+            ui.painter()
+                .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
+            // Swallow input meant for the panels; report a click for dismissal.
+            ui.allocate_rect(screen, egui::Sense::click()).clicked()
+        })
+        .inner
+}
+
+/// A picker item with a numeric id and a display name (server or channel).
+trait IdName {
+    fn item_id(&self) -> u64;
+    fn item_name(&self) -> &str;
+}
+impl IdName for GuildView {
+    fn item_id(&self) -> u64 {
+        self.id
+    }
+    fn item_name(&self) -> &str {
+        &self.name
+    }
+}
+impl IdName for ChannelView {
+    fn item_id(&self) -> u64 {
+        self.id
+    }
+    fn item_name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// The display name of the `selected` id within `items`, or `placeholder`.
+fn label_for<T: IdName>(items: &[T], selected: Option<u64>, placeholder: &str) -> String {
+    match selected {
+        Some(id) => items
+            .iter()
+            .find(|i| i.item_id() == id)
+            .map(|i| i.item_name().to_string())
+            .unwrap_or_else(|| placeholder.to_string()),
+        None => placeholder.to_string(),
     }
 }
 
@@ -345,19 +577,40 @@ impl eframe::App for SalvaeApp {
             });
         }
 
+        let side_frame =
+            egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
+        let central_frame =
+            egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
+
         egui::SidePanel::left("groups")
-            .default_width(240.0)
+            .resizable(false)
+            .exact_width(264.0)
+            .frame(side_frame)
             .show(ctx, |ui| {
                 self.groups_panel(ui);
             });
         egui::TopBottomPanel::bottom("activity")
-            .default_height(140.0)
+            .resizable(false)
+            .exact_height(150.0)
+            .frame(side_frame)
             .show(ctx, |ui| {
                 self.activity_panel(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.games_panel(ui);
-        });
+        egui::CentralPanel::default()
+            .frame(central_frame)
+            .show(ctx, |ui| {
+                self.games_panel(ui);
+            });
+
+        // Dim + block the panels behind the create/join dialogs; a click on the
+        // backdrop dismisses them. (The conflict prompt requires an explicit
+        // choice, so it has no dismissable backdrop.)
+        if (self.forms.show_create || self.forms.show_join) && modal_shield(ctx) {
+            self.forms.show_create = false;
+            self.forms.show_join = false;
+        }
+        self.create_modal(ctx);
+        self.join_modal(ctx);
         self.conflict_modal(ctx);
 
         // Tray menu clicks arrive on a global channel that eframe does not

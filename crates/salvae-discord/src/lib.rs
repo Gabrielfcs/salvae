@@ -5,5 +5,6 @@
 //! retrieve encrypted save versions in a private Discord channel.
 
 pub mod discord;
+pub mod discover;
 pub mod parse;
 pub mod retry;
