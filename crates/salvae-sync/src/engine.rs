@@ -218,22 +218,22 @@ impl<C: Channel> SyncEngine<C> {
     }
 
     /// List all stored versions of `game_id`, oldest first.
-    pub fn list_versions(
-        &self,
-        game_id: &str,
-    ) -> Result<Vec<salvae_core::version::SaveVersion>, SyncError> {
+    pub fn list_versions(&self, game_id: &str) -> Result<Vec<SaveVersion>, SyncError> {
         Ok(self.vault().list_versions(game_id)?)
     }
 
     /// Restore a specific `version` of `game_id` into `save_folder` (backing up
     /// the current local contents first). Returns the restored version's metadata.
+    ///
+    /// This deliberately points the sync state at the restored version, so if it
+    /// is not the latest, the next close will surface a conflict for the user.
     pub fn restore_version(
         &mut self,
         game_id: &str,
         version: u64,
         save_folder: &Path,
         now_ms: u64,
-    ) -> Result<salvae_core::version::SaveVersion, SyncError> {
+    ) -> Result<SaveVersion, SyncError> {
         let target = self
             .vault()
             .list_versions(game_id)?
