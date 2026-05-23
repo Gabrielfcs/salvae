@@ -12,10 +12,8 @@ pub mod worker;
 pub mod agent_backend;
 #[cfg(not(test))]
 pub mod app;
-
-// Enabled in Task 9 (pulls in tray machinery):
-// #[cfg(not(test))]
-// pub mod tray;
+#[cfg(not(test))]
+pub mod tray;
 
 /// Errors surfaced by the UI layer.
 #[derive(Debug, thiserror::Error)]
