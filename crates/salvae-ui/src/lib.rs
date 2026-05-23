@@ -8,9 +8,10 @@ pub mod view;
 pub mod viewmodel;
 pub mod worker;
 
-// Enabled in later tasks (they pull in Discord/winit/tray machinery):
-// #[cfg(not(test))]
-// pub mod agent_backend;
+#[cfg(not(test))]
+pub mod agent_backend;
+
+// Enabled in later tasks (they pull in winit/tray machinery):
 // #[cfg(not(test))]
 // pub mod app;
 // #[cfg(not(test))]
