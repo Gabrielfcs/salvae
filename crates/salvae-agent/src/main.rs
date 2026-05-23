@@ -20,7 +20,10 @@ use salvae_watch::system::SystemProcessLister;
 const POLL_INTERVAL: Duration = Duration::from_secs(4);
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Per-user Salvaê app directory (`%AppData%\salvae`).

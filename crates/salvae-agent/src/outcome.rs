@@ -7,7 +7,10 @@ use salvae_sync::engine::{PullOutcome, PushOutcome};
 pub enum AgentOutcome {
     /// Game opened: the pull result, plus the display names of other members
     /// currently playing this game (a warning to surface).
-    Opened { pull: PullOutcome, others_playing: Vec<String> },
+    Opened {
+        pull: PullOutcome,
+        others_playing: Vec<String>,
+    },
     /// Game closed: the push result (which may be a `Conflict` for the UI).
     Closed { push: PushOutcome },
     /// The game is not configured in any group (detected but intentionally ignored).

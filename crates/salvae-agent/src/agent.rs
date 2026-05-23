@@ -21,7 +21,11 @@ pub struct GroupRuntime<C: Channel> {
 
 impl<C: Channel> GroupRuntime<C> {
     pub fn new(config: GroupConfig, engine: SyncEngine<C>, state_path: impl Into<PathBuf>) -> Self {
-        Self { config, engine, state_path: state_path.into() }
+        Self {
+            config,
+            engine,
+            state_path: state_path.into(),
+        }
     }
 }
 
@@ -34,7 +38,11 @@ pub struct Agent<C: Channel, L: ProcessLister> {
 
 impl<C: Channel, L: ProcessLister> Agent<C, L> {
     pub fn new(watcher: Watcher<L>, detector: Detector, groups: Vec<GroupRuntime<C>>) -> Self {
-        Self { watcher, detector, groups }
+        Self {
+            watcher,
+            detector,
+            groups,
+        }
     }
 
     /// Find the group + configured save folder for `game_id`, if any.
@@ -64,7 +72,10 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         let pull = rt.engine.pull(game_id, &folder, now_ms)?;
         rt.engine.begin_playing(game_id, now_ms)?;
         save_state(rt)?;
-        Ok(AgentOutcome::Opened { pull, others_playing })
+        Ok(AgentOutcome::Opened {
+            pull,
+            others_playing,
+        })
     }
 
     /// Handle a game closing: remove our "playing" marker and push the local
@@ -164,7 +175,9 @@ mod tests {
         };
         let engine = SyncEngine::new(channel, [9u8; 32], "me", "dev-me", 5, backups);
         let rt = GroupRuntime::new(config, engine, state_path);
-        let watcher = Watcher::new(FakeLister { frames: std::cell::RefCell::new(frames.into()) });
+        let watcher = Watcher::new(FakeLister {
+            frames: std::cell::RefCell::new(frames.into()),
+        });
         Agent::new(watcher, Detector::new(vec![installed()]), vec![rt])
     }
 
@@ -212,8 +225,13 @@ mod tests {
         );
 
         let outcome = agent.handle_open("steam:1", 100).unwrap();
-        assert!(matches!(outcome, AgentOutcome::Opened { pull: PullOutcome::Applied(v), .. } if v.number == 1));
-        assert_eq!(std::fs::read(folder.join("world.db")).unwrap(), b"remote day 1");
+        assert!(
+            matches!(outcome, AgentOutcome::Opened { pull: PullOutcome::Applied(v), .. } if v.number == 1)
+        );
+        assert_eq!(
+            std::fs::read(folder.join("world.db")).unwrap(),
+            b"remote day 1"
+        );
         // State was persisted.
         assert!(dir.path().join("state.json").exists());
     }
@@ -228,7 +246,10 @@ mod tests {
             dir.path().join("backups"),
             vec![],
         );
-        assert_eq!(agent.handle_open("steam:999", 100).unwrap(), AgentOutcome::NotConfigured);
+        assert_eq!(
+            agent.handle_open("steam:999", 100).unwrap(),
+            AgentOutcome::NotConfigured
+        );
     }
 
     #[test]
@@ -248,7 +269,9 @@ mod tests {
         );
 
         let outcome = agent.handle_close("steam:1", 200).unwrap();
-        assert!(matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Pushed(v) } if v.number == 1));
+        assert!(
+            matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Pushed(v) } if v.number == 1)
+        );
         assert!(dir.path().join("state.json").exists());
     }
 
@@ -262,7 +285,10 @@ mod tests {
             dir.path().join("backups"),
             vec![],
         );
-        assert_eq!(agent.handle_close("steam:1", 200).unwrap(), AgentOutcome::NoFolder);
+        assert_eq!(
+            agent.handle_close("steam:1", 200).unwrap(),
+            AgentOutcome::NoFolder
+        );
     }
 
     #[test]
@@ -286,7 +312,9 @@ mod tests {
             vec![],
         );
         let outcome = agent.handle_close("steam:1", 200).unwrap();
-        assert!(matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Conflict { remote } } if remote.number == 1));
+        assert!(
+            matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Conflict { remote } } if remote.number == 1)
+        );
     }
 
     #[test]
@@ -303,10 +331,19 @@ mod tests {
 
         // Frame 1: no game. Frame 2: the game's exe (under its install dir) runs.
         let frames = vec![
-            vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+            vec![ProcessInfo {
+                pid: 1,
+                exe_path: "C:/Windows/explorer.exe".into(),
+            }],
             vec![
-                ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() },
-                ProcessInfo { pid: 9, exe_path: "C:/Steam/common/Valheim/valheim.exe".into() },
+                ProcessInfo {
+                    pid: 1,
+                    exe_path: "C:/Windows/explorer.exe".into(),
+                },
+                ProcessInfo {
+                    pid: 9,
+                    exe_path: "C:/Steam/common/Valheim/valheim.exe".into(),
+                },
             ],
         ];
         let mut agent = agent_for(
@@ -324,8 +361,22 @@ mod tests {
         let results = agent.tick(200).unwrap();
         assert_eq!(results.len(), 1);
         let (event, outcome) = &results[0];
-        assert_eq!(event, &GameEvent::Opened { game_id: "steam:1".into() });
-        assert!(matches!(outcome, AgentOutcome::Opened { pull: PullOutcome::Applied(_), .. }));
-        assert_eq!(std::fs::read(folder.join("world.db")).unwrap(), b"remote save");
+        assert_eq!(
+            event,
+            &GameEvent::Opened {
+                game_id: "steam:1".into()
+            }
+        );
+        assert!(matches!(
+            outcome,
+            AgentOutcome::Opened {
+                pull: PullOutcome::Applied(_),
+                ..
+            }
+        ));
+        assert_eq!(
+            std::fs::read(folder.join("world.db")).unwrap(),
+            b"remote save"
+        );
     }
 }
