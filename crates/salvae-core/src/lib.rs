@@ -4,6 +4,7 @@
 
 pub mod kdf;
 pub mod cipher;
+pub mod compress;
 
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
