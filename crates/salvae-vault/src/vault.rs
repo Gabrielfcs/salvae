@@ -158,8 +158,21 @@ impl<C: Channel> Vault<C> {
         Ok(save)
     }
 
-    /// Placeholder pruning — replaced with the real implementation in Task 8.
-    fn prune(&self, _game_id: &str, _max_versions: usize) -> Result<(), VaultError> {
+    /// Delete the oldest version messages of `game_id` until at most
+    /// `max_versions` remain. `max_versions == 0` is treated as 1 (always keep
+    /// at least the newest version, to never leave a game with no save).
+    fn prune(&self, game_id: &str, max_versions: usize) -> Result<(), VaultError> {
+        let keep = max_versions.max(1);
+        let mut found = self.scan(game_id)?;
+        if found.len() <= keep {
+            return Ok(());
+        }
+        // Oldest first (lowest version number).
+        found.sort_by_key(|(_, v)| v.number);
+        let to_delete = found.len() - keep;
+        for (message, _) in found.into_iter().take(to_delete) {
+            self.channel.delete_message(message.id)?;
+        }
         Ok(())
     }
 }
@@ -294,5 +307,42 @@ mod tests {
         // A different key cannot open the sealed blob.
         let wrong = Vault::new(&ch, [2u8; 32]);
         assert!(wrong.download("valheim", 1).is_err());
+    }
+
+    #[test]
+    fn prune_keeps_only_last_n_versions() {
+        let vault = Vault::new(InMemoryChannel::new(), [4u8; 32]);
+        // max_versions = 3; push 5 distinct versions.
+        for i in 0..5u8 {
+            let body = vec![i; (i as usize) + 1]; // distinct content each time
+            vault.push_version("game", &body, "a", "d", i as u64, 3).unwrap();
+        }
+        let versions = vault.list_versions("game").unwrap();
+        assert_eq!(versions.len(), 3);
+        // The three newest version numbers are kept (3, 4, 5).
+        let numbers: Vec<u64> = versions.iter().map(|v| v.number).collect();
+        assert_eq!(numbers, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn prune_does_not_touch_other_games() {
+        let vault = Vault::new(InMemoryChannel::new(), [4u8; 32]);
+        vault.push_version("keep", b"only-one", "a", "d", 1, 2).unwrap();
+        for i in 0..4u8 {
+            vault.push_version("churn", &vec![i; (i as usize) + 1], "a", "d", i as u64, 2).unwrap();
+        }
+        assert_eq!(vault.list_versions("keep").unwrap().len(), 1);
+        assert_eq!(vault.list_versions("churn").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn downloading_a_pruned_version_is_not_found() {
+        let vault = Vault::new(InMemoryChannel::new(), [4u8; 32]);
+        for i in 0..4u8 {
+            vault.push_version("game", &vec![i; (i as usize) + 1], "a", "d", i as u64, 2).unwrap();
+        }
+        // Versions 1 and 2 were pruned (only 3 and 4 remain).
+        assert!(matches!(vault.download("game", 1), Err(VaultError::NotFound)));
+        assert_eq!(vault.download("game", 4).unwrap(), vec![3u8; 4]);
     }
 }
