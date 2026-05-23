@@ -34,9 +34,16 @@ mod tests {
     fn save_search_roots_includes_localappdata_when_set() {
         // Compute against an explicit profile/localappdata so the test is
         // deterministic regardless of the real environment.
-        let roots = roots_from(Some("C:/Users/Tester"), Some("C:/Users/Tester/AppData/Local"));
-        assert!(roots.iter().any(|p| p == &PathBuf::from("C:/Users/Tester/AppData/Local")));
-        assert!(roots.iter().any(|p| p == &PathBuf::from("C:/Users/Tester/AppData/LocalLow")));
+        let roots = roots_from(
+            Some("C:/Users/Tester"),
+            Some("C:/Users/Tester/AppData/Local"),
+        );
+        assert!(roots
+            .iter()
+            .any(|p| p == &PathBuf::from("C:/Users/Tester/AppData/Local")));
+        assert!(roots
+            .iter()
+            .any(|p| p == &PathBuf::from("C:/Users/Tester/AppData/LocalLow")));
         assert!(roots.iter().any(|p| p.ends_with("Saved Games")));
         assert!(roots.iter().any(|p| p.ends_with("My Games")));
     }

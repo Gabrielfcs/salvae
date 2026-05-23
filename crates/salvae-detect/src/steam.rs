@@ -36,7 +36,11 @@ pub fn games_in_library(library: &Path) -> Result<Vec<InstalledGame>, DetectErro
 
 fn game_from_acf(text: &str, apps: &Path) -> Result<Option<InstalledGame>, DetectError> {
     let doc = vdf::parse(text)?;
-    let app = match doc.as_obj().and_then(|m| m.get("AppState")).and_then(|v| v.as_obj()) {
+    let app = match doc
+        .as_obj()
+        .and_then(|m| m.get("AppState"))
+        .and_then(|v| v.as_obj())
+    {
         Some(a) => a,
         None => return Ok(None),
     };
@@ -56,13 +60,21 @@ fn game_from_acf(text: &str, apps: &Path) -> Result<Option<InstalledGame>, Detec
 
 /// Read the library paths listed in a `libraryfolders.vdf`.
 pub fn library_paths(library_folders_vdf: &Path) -> Result<Vec<std::path::PathBuf>, DetectError> {
-    let text = std::fs::read_to_string(library_folders_vdf)
-        .map_err(|e| DetectError::Io(e.to_string()))?;
+    let text =
+        std::fs::read_to_string(library_folders_vdf).map_err(|e| DetectError::Io(e.to_string()))?;
     let doc = vdf::parse(&text)?;
     let mut paths = Vec::new();
-    if let Some(lf) = doc.as_obj().and_then(|m| m.get("libraryfolders")).and_then(|v| v.as_obj()) {
+    if let Some(lf) = doc
+        .as_obj()
+        .and_then(|m| m.get("libraryfolders"))
+        .and_then(|v| v.as_obj())
+    {
         for entry in lf.values() {
-            if let Some(path) = entry.as_obj().and_then(|m| m.get("path")).and_then(|v| v.as_str()) {
+            if let Some(path) = entry
+                .as_obj()
+                .and_then(|m| m.get("path"))
+                .and_then(|v| v.as_str())
+            {
                 paths.push(std::path::PathBuf::from(path));
             }
         }
@@ -105,7 +117,13 @@ mod tests {
         let lib = tempfile::tempdir().unwrap();
         let apps = lib.path().join("steamapps");
         std::fs::create_dir_all(&apps).unwrap();
-        make_acf(&apps, "appmanifest_892970.acf", "892970", "Valheim", "Valheim");
+        make_acf(
+            &apps,
+            "appmanifest_892970.acf",
+            "892970",
+            "Valheim",
+            "Valheim",
+        );
 
         let games = games_in_library(lib.path()).unwrap();
         assert_eq!(games.len(), 1);
@@ -139,7 +157,13 @@ mod tests {
 
         let lib2 = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(lib2.path().join("steamapps")).unwrap();
-        make_acf(&lib2.path().join("steamapps"), "appmanifest_2.acf", "2", "GameTwo", "GameTwo");
+        make_acf(
+            &lib2.path().join("steamapps"),
+            "appmanifest_2.acf",
+            "2",
+            "GameTwo",
+            "GameTwo",
+        );
 
         let escaped = lib2.path().to_string_lossy().replace('\\', "\\\\");
         std::fs::write(

@@ -22,7 +22,11 @@ pub fn rank(changed: &[String], game_name: &str) -> Vec<Candidate> {
 
     let mut by_folder: BTreeMap<String, usize> = BTreeMap::new();
     for path in changed {
-        let folder = path.split('/').next().filter(|_| path.contains('/')).unwrap_or(".");
+        let folder = path
+            .split('/')
+            .next()
+            .filter(|_| path.contains('/'))
+            .unwrap_or(".");
         *by_folder.entry(folder.to_string()).or_insert(0) += 1;
     }
 
@@ -48,7 +52,10 @@ pub fn rank(changed: &[String], game_name: &str) -> Vec<Candidate> {
 
 /// Lowercase and strip non-alphanumeric characters for fuzzy name comparison.
 fn normalize(s: &str) -> String {
-    s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
 }
 
 /// Whether two normalized names plausibly refer to the same game (one contains

@@ -101,7 +101,9 @@ fn tokenize(input: &str) -> Result<Vec<Token>, DetectError> {
                 tokens.push(Token::Str(s));
             }
             other => {
-                return Err(DetectError::Parse(format!("unexpected character {other:?}")));
+                return Err(DetectError::Parse(format!(
+                    "unexpected character {other:?}"
+                )));
             }
         }
     }
@@ -167,7 +169,13 @@ mod tests {
             }
         "#;
         let v = parse(input).unwrap();
-        let app = v.as_obj().unwrap().get("AppState").unwrap().as_obj().unwrap();
+        let app = v
+            .as_obj()
+            .unwrap()
+            .get("AppState")
+            .unwrap()
+            .as_obj()
+            .unwrap();
         assert_eq!(app.get("appid").unwrap().as_str(), Some("892970"));
         assert_eq!(app.get("name").unwrap().as_str(), Some("Valheim"));
     }
@@ -182,9 +190,21 @@ mod tests {
             }
         "#;
         let v = parse(input).unwrap();
-        let lf = v.as_obj().unwrap().get("libraryfolders").unwrap().as_obj().unwrap();
+        let lf = v
+            .as_obj()
+            .unwrap()
+            .get("libraryfolders")
+            .unwrap()
+            .as_obj()
+            .unwrap();
         assert_eq!(
-            lf.get("1").unwrap().as_obj().unwrap().get("path").unwrap().as_str(),
+            lf.get("1")
+                .unwrap()
+                .as_obj()
+                .unwrap()
+                .get("path")
+                .unwrap()
+                .as_str(),
             Some("D:\\Games\\SteamLibrary")
         );
     }

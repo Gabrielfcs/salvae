@@ -26,7 +26,10 @@ mod error_tests {
 
     #[test]
     fn error_messages_are_human_readable() {
-        assert_eq!(DetectError::Parse("bad".into()).to_string(), "parse error: bad");
+        assert_eq!(
+            DetectError::Parse("bad".into()).to_string(),
+            "parse error: bad"
+        );
         assert_eq!(DetectError::Io("disk".into()).to_string(), "io error: disk");
     }
 }

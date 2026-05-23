@@ -57,7 +57,7 @@ fn walk(
             if current_depth + 1 < max_depth {
                 walk(root, &path, current_depth + 1, max_depth, snap)?;
             }
-        } else if meta.is_file() && current_depth + 1 <= max_depth {
+        } else if meta.is_file() && current_depth < max_depth {
             let rel = path
                 .strip_prefix(root)
                 .map_err(|e| DetectError::Io(e.to_string()))?
@@ -69,7 +69,13 @@ fn walk(
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0);
-            snap.entries.insert(rel, Entry { size: meta.len(), mtime_ms });
+            snap.entries.insert(
+                rel,
+                Entry {
+                    size: meta.len(),
+                    mtime_ms,
+                },
+            );
         }
     }
     Ok(())
@@ -126,6 +132,9 @@ mod tests {
 
         let mut changed = diff(&before, &after);
         changed.sort();
-        assert_eq!(changed, vec!["added.txt".to_string(), "change.txt".to_string()]);
+        assert_eq!(
+            changed,
+            vec!["added.txt".to_string(), "change.txt".to_string()]
+        );
     }
 }

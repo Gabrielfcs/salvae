@@ -37,7 +37,9 @@ pub fn enumerate(manifests_dir: &Path) -> Result<Vec<InstalledGame>, DetectError
             Ok(m) => m,
             Err(_) => continue, // skip malformed manifests
         };
-        let name = manifest.display_name.unwrap_or_else(|| manifest.app_name.clone());
+        let name = manifest
+            .display_name
+            .unwrap_or_else(|| manifest.app_name.clone());
         games.push(InstalledGame {
             id: format!("epic:{}", manifest.app_name),
             name,
@@ -91,6 +93,8 @@ mod tests {
     #[test]
     fn missing_dir_yields_no_games() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(enumerate(&dir.path().join("does-not-exist")).unwrap().is_empty());
+        assert!(enumerate(&dir.path().join("does-not-exist"))
+            .unwrap()
+            .is_empty());
     }
 }
