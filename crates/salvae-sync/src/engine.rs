@@ -180,6 +180,30 @@ impl<C: Channel> SyncEngine<C> {
         self.state.set(game_id, version.number);
         Ok(PushOutcome::Pushed(version))
     }
+
+    /// Resolve a conflict for `game_id`: either push local content as a new
+    /// version, or discard local and take the latest remote version.
+    pub fn resolve(
+        &mut self,
+        game_id: &str,
+        save_folder: &Path,
+        resolution: Resolution,
+        now_ms: u64,
+    ) -> Result<PushOutcome, SyncError> {
+        match resolution {
+            Resolution::PushLocal => {
+                let packed = pack::pack_folder(save_folder)?;
+                self.do_push(game_id, &packed, now_ms)
+            }
+            Resolution::TakeRemote => {
+                let Some(latest) = self.vault().latest_version(game_id)? else {
+                    return Err(SyncError::Vault(salvae_vault::VaultError::NotFound));
+                };
+                self.apply_version(game_id, save_folder, &latest, now_ms)?;
+                Ok(PushOutcome::NoChange(latest.number))
+            }
+        }
+    }
 }
 
 /// Remove all entries inside `path` (but keep `path` itself).
@@ -292,5 +316,55 @@ mod tests {
             owner.push("valheim", owner_folder.path(), 220).unwrap(),
             PushOutcome::Conflict { remote } if remote.number == 2
         ));
+    }
+
+    fn seed_conflict() -> (InMemoryChannel, tempfile::TempDir) {
+        // Vault has v1 ("owner day1") and v2 ("friend day2").
+        let channel = InMemoryChannel::new();
+        let tmp = tempfile::tempdir().unwrap();
+        let s1 = tmp.path().join("s1");
+        let s2 = tmp.path().join("s2");
+        write(&s1, "world.db", b"owner day1");
+        write(&s2, "world.db", b"friend day2");
+        let v = Vault::new(&channel, [3u8; 32]);
+        v.push_version("valheim", &pack::pack_folder(&s1).unwrap(), "o", "do", 1, 5).unwrap();
+        v.push_version("valheim", &pack::pack_folder(&s2).unwrap(), "f", "df", 2, 5).unwrap();
+        (channel, tmp)
+    }
+
+    #[test]
+    fn resolve_push_local_uploads_new_version() {
+        let (channel, _tmp) = seed_conflict();
+        let backups = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        write(folder.path(), "world.db", b"owner day2 diverged");
+
+        let mut owner =
+            SyncEngine::new(&channel, [3u8; 32], "owner", "dev-owner", 5, backups.path());
+        // owner is behind (never synced) -> push would conflict; resolve PushLocal.
+        let out = owner
+            .resolve("valheim", folder.path(), Resolution::PushLocal, 300)
+            .unwrap();
+        assert!(matches!(out, PushOutcome::Pushed(v) if v.number == 3));
+        // Local content unchanged by PushLocal.
+        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"owner day2 diverged");
+    }
+
+    #[test]
+    fn resolve_take_remote_overwrites_local() {
+        let (channel, _tmp) = seed_conflict();
+        let backups = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        write(folder.path(), "world.db", b"owner day2 diverged");
+
+        let mut owner =
+            SyncEngine::new(&channel, [3u8; 32], "owner", "dev-owner", 5, backups.path());
+        let out = owner
+            .resolve("valheim", folder.path(), Resolution::TakeRemote, 300)
+            .unwrap();
+        assert!(matches!(out, PushOutcome::NoChange(2)));
+        // Local now holds the remote v2 content; the old local was backed up.
+        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"friend day2");
+        assert!(std::fs::read_dir(backups.path().join("valheim")).unwrap().count() >= 1);
     }
 }
