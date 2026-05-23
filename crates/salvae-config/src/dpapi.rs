@@ -3,14 +3,18 @@
 //! `protect`/`unprotect` wrap `CryptProtectData`/`CryptUnprotectData`, encrypting
 //! data so only the current Windows user (on this machine) can read it.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
+use serde::{Deserialize, Serialize};
 use windows_sys::Win32::Foundation::LocalFree;
 use windows_sys::Win32::Security::Cryptography::{
     CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB,
 };
 
+use crate::secret::{GroupSecret, SecretStore};
 use crate::ConfigError;
 
 /// Build a DATA_BLOB pointing at `data` (the API does not mutate the input).
@@ -74,6 +78,77 @@ pub fn unprotect(data: &[u8]) -> Result<Vec<u8>, ConfigError> {
     Ok(unsafe { take_out_blob(output) })
 }
 
+/// Serializable form of a secret (key as bytes for JSON friendliness).
+#[derive(Serialize, Deserialize)]
+struct StoredSecret {
+    token: String,
+    key: Vec<u8>,
+}
+
+/// A `SecretStore` that persists all secrets to one DPAPI-protected file.
+pub struct DpapiSecretStore {
+    path: PathBuf,
+}
+
+impl DpapiSecretStore {
+    /// Use `path` as the protected secrets file (created on first `set`).
+    pub fn new(path: impl AsRef<Path>) -> Self {
+        Self { path: path.as_ref().to_path_buf() }
+    }
+
+    /// Read + decrypt the secrets map (empty if the file does not exist).
+    fn load_map(&self) -> Result<HashMap<String, StoredSecret>, ConfigError> {
+        if !self.path.exists() {
+            return Ok(HashMap::new());
+        }
+        let sealed = std::fs::read(&self.path).map_err(|e| ConfigError::Io(e.to_string()))?;
+        let plain = unprotect(&sealed)?;
+        serde_json::from_slice(&plain).map_err(|e| ConfigError::Serde(e.to_string()))
+    }
+
+    /// Encrypt + write the secrets map.
+    fn save_map(&self, map: &HashMap<String, StoredSecret>) -> Result<(), ConfigError> {
+        let plain = serde_json::to_vec(map).map_err(|e| ConfigError::Serde(e.to_string()))?;
+        let sealed = protect(&plain)?;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| ConfigError::Io(e.to_string()))?;
+        }
+        std::fs::write(&self.path, sealed).map_err(|e| ConfigError::Io(e.to_string()))
+    }
+}
+
+impl SecretStore for DpapiSecretStore {
+    fn get(&self, group_id: &str) -> Result<Option<GroupSecret>, ConfigError> {
+        let map = self.load_map()?;
+        match map.get(group_id) {
+            None => Ok(None),
+            Some(s) => {
+                let key: [u8; salvae_core::kdf::KEY_LEN] = s
+                    .key
+                    .clone()
+                    .try_into()
+                    .map_err(|_| ConfigError::Secret("stored key has wrong length".into()))?;
+                Ok(Some(GroupSecret { token: s.token.clone(), key }))
+            }
+        }
+    }
+
+    fn set(&mut self, group_id: &str, secret: GroupSecret) -> Result<(), ConfigError> {
+        let mut map = self.load_map()?;
+        map.insert(
+            group_id.to_string(),
+            StoredSecret { token: secret.token, key: secret.key.to_vec() },
+        );
+        self.save_map(&map)
+    }
+
+    fn remove(&mut self, group_id: &str) -> Result<(), ConfigError> {
+        let mut map = self.load_map()?;
+        map.remove(group_id);
+        self.save_map(&map)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +164,47 @@ mod tests {
     #[test]
     fn unprotect_garbage_fails() {
         assert!(unprotect(&[0u8, 1, 2, 3, 4, 5]).is_err());
+    }
+
+    #[test]
+    fn file_store_round_trips_secrets() {
+        use crate::secret::{GroupSecret, SecretStore};
+        use salvae_core::kdf::KEY_LEN;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.dat");
+
+        let mut store = DpapiSecretStore::new(&path);
+        assert_eq!(store.get("g1").unwrap(), None);
+        store
+            .set("g1", GroupSecret { token: "tok".into(), key: [9u8; KEY_LEN] })
+            .unwrap();
+
+        // A fresh store reading the same file sees the persisted secret.
+        let reopened = DpapiSecretStore::new(&path);
+        assert_eq!(
+            reopened.get("g1").unwrap(),
+            Some(GroupSecret { token: "tok".into(), key: [9u8; KEY_LEN] })
+        );
+
+        store.remove("g1").unwrap();
+        assert_eq!(DpapiSecretStore::new(&path).get("g1").unwrap(), None);
+    }
+
+    #[test]
+    fn file_store_is_dpapi_protected_on_disk() {
+        use crate::secret::{GroupSecret, SecretStore};
+        use salvae_core::kdf::KEY_LEN;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.dat");
+        let mut store = DpapiSecretStore::new(&path);
+        store
+            .set("g1", GroupSecret { token: "plaintext-marker".into(), key: [1u8; KEY_LEN] })
+            .unwrap();
+
+        // The token must NOT appear verbatim in the on-disk file.
+        let raw = std::fs::read(&path).unwrap();
+        assert!(raw.windows(b"plaintext-marker".len()).all(|w| w != b"plaintext-marker"));
     }
 }
