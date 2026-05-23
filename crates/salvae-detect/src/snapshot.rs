@@ -1,0 +1,1 @@
+//! Folder metadata snapshot + diff.
