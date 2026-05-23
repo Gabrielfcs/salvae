@@ -10,10 +10,10 @@ pub mod worker;
 
 #[cfg(not(test))]
 pub mod agent_backend;
+#[cfg(not(test))]
+pub mod app;
 
-// Enabled in later tasks (they pull in winit/tray machinery):
-// #[cfg(not(test))]
-// pub mod app;
+// Enabled in Task 9 (pulls in tray machinery):
 // #[cfg(not(test))]
 // pub mod tray;
 
