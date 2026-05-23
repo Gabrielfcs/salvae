@@ -25,7 +25,11 @@ pub struct Detector {
 impl Detector {
     /// Create a detector for the given installed games.
     pub fn new(games: Vec<InstalledGame>) -> Self {
-        Self { games, pid_game: BTreeMap::new(), open_counts: BTreeMap::new() }
+        Self {
+            games,
+            pid_game: BTreeMap::new(),
+            open_counts: BTreeMap::new(),
+        }
     }
 
     /// Feed process events; return the resulting game events (in order).
@@ -80,27 +84,47 @@ mod tests {
     }
 
     fn started(pid: u32, path: &str) -> ProcessEvent {
-        ProcessEvent::Started { pid, exe_path: PathBuf::from(path) }
+        ProcessEvent::Started {
+            pid,
+            exe_path: PathBuf::from(path),
+        }
     }
     fn stopped(pid: u32, path: &str) -> ProcessEvent {
-        ProcessEvent::Stopped { pid, exe_path: PathBuf::from(path) }
+        ProcessEvent::Stopped {
+            pid,
+            exe_path: PathBuf::from(path),
+        }
     }
 
     #[test]
     fn matched_process_opens_then_closes_the_game() {
         let mut d = Detector::new(games());
         let opened = d.process(&[started(10, "C:/Steam/common/Valheim/valheim.exe")]);
-        assert_eq!(opened, vec![GameEvent::Opened { game_id: "steam:892970".into() }]);
+        assert_eq!(
+            opened,
+            vec![GameEvent::Opened {
+                game_id: "steam:892970".into()
+            }]
+        );
 
         let closed = d.process(&[stopped(10, "C:/Steam/common/Valheim/valheim.exe")]);
-        assert_eq!(closed, vec![GameEvent::Closed { game_id: "steam:892970".into() }]);
+        assert_eq!(
+            closed,
+            vec![GameEvent::Closed {
+                game_id: "steam:892970".into()
+            }]
+        );
     }
 
     #[test]
     fn unmatched_process_yields_nothing() {
         let mut d = Detector::new(games());
-        assert!(d.process(&[started(10, "C:/Windows/notepad.exe")]).is_empty());
-        assert!(d.process(&[stopped(10, "C:/Windows/notepad.exe")]).is_empty());
+        assert!(d
+            .process(&[started(10, "C:/Windows/notepad.exe")])
+            .is_empty());
+        assert!(d
+            .process(&[stopped(10, "C:/Windows/notepad.exe")])
+            .is_empty());
     }
 
     #[test]
@@ -109,14 +133,21 @@ mod tests {
         // Two helper processes of the same game start.
         let e1 = d.process(&[started(10, "C:/Steam/common/Valheim/valheim.exe")]);
         let e2 = d.process(&[started(11, "C:/Steam/common/Valheim/helper.exe")]);
-        assert_eq!(e1, vec![GameEvent::Opened { game_id: "steam:892970".into() }]);
+        assert_eq!(
+            e1,
+            vec![GameEvent::Opened {
+                game_id: "steam:892970".into()
+            }]
+        );
         assert!(e2.is_empty()); // already open
 
         // First exits -> still open; second exits -> closed.
         assert!(d.process(&[stopped(10, "x")]).is_empty());
         assert_eq!(
             d.process(&[stopped(11, "x")]),
-            vec![GameEvent::Closed { game_id: "steam:892970".into() }]
+            vec![GameEvent::Closed {
+                game_id: "steam:892970".into()
+            }]
         );
     }
 
@@ -135,16 +166,28 @@ mod tests {
             }
         }
 
-        let valheim = ProcessInfo { pid: 7, exe_path: "C:/Steam/common/Valheim/valheim.exe".into() };
+        let valheim = ProcessInfo {
+            pid: 7,
+            exe_path: "C:/Steam/common/Valheim/valheim.exe".into(),
+        };
         let lister = FakeLister {
             frames: RefCell::new(
                 vec![
-                    vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+                    vec![ProcessInfo {
+                        pid: 1,
+                        exe_path: "C:/Windows/explorer.exe".into(),
+                    }],
                     vec![
-                        ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() },
+                        ProcessInfo {
+                            pid: 1,
+                            exe_path: "C:/Windows/explorer.exe".into(),
+                        },
                         valheim.clone(),
                     ],
-                    vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+                    vec![ProcessInfo {
+                        pid: 1,
+                        exe_path: "C:/Windows/explorer.exe".into(),
+                    }],
                 ]
                 .into(),
             ),
@@ -158,12 +201,16 @@ mod tests {
         // Poll 2: Valheim launches -> Opened.
         assert_eq!(
             detector.process(&watcher.poll().unwrap()),
-            vec![GameEvent::Opened { game_id: "steam:892970".into() }]
+            vec![GameEvent::Opened {
+                game_id: "steam:892970".into()
+            }]
         );
         // Poll 3: Valheim exits -> Closed.
         assert_eq!(
             detector.process(&watcher.poll().unwrap()),
-            vec![GameEvent::Closed { game_id: "steam:892970".into() }]
+            vec![GameEvent::Closed {
+                game_id: "steam:892970".into()
+            }]
         );
     }
 }

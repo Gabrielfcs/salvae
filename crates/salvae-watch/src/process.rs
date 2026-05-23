@@ -35,23 +35,36 @@ impl<L: ProcessLister> Watcher<L> {
     /// Create a watcher with an empty baseline (the first `poll` reports every
     /// running process as `Started`).
     pub fn new(lister: L) -> Self {
-        Self { lister, prev: BTreeMap::new() }
+        Self {
+            lister,
+            prev: BTreeMap::new(),
+        }
     }
 
     /// List processes now and return what changed since the previous poll.
     pub fn poll(&mut self) -> Result<Vec<ProcessEvent>, WatchError> {
-        let current: BTreeMap<u32, PathBuf> =
-            self.lister.list()?.into_iter().map(|p| (p.pid, p.exe_path)).collect();
+        let current: BTreeMap<u32, PathBuf> = self
+            .lister
+            .list()?
+            .into_iter()
+            .map(|p| (p.pid, p.exe_path))
+            .collect();
 
         let mut events = Vec::new();
         for (pid, path) in &current {
             if !self.prev.contains_key(pid) {
-                events.push(ProcessEvent::Started { pid: *pid, exe_path: path.clone() });
+                events.push(ProcessEvent::Started {
+                    pid: *pid,
+                    exe_path: path.clone(),
+                });
             }
         }
         for (pid, path) in &self.prev {
             if !current.contains_key(pid) {
-                events.push(ProcessEvent::Stopped { pid: *pid, exe_path: path.clone() });
+                events.push(ProcessEvent::Stopped {
+                    pid: *pid,
+                    exe_path: path.clone(),
+                });
             }
         }
         self.prev = current;
@@ -70,7 +83,9 @@ mod tests {
     }
     impl FakeLister {
         fn new(frames: Vec<Vec<ProcessInfo>>) -> Self {
-            Self { frames: RefCell::new(frames.into()) }
+            Self {
+                frames: RefCell::new(frames.into()),
+            }
         }
     }
     impl ProcessLister for FakeLister {
@@ -80,7 +95,10 @@ mod tests {
     }
 
     fn proc(pid: u32, path: &str) -> ProcessInfo {
-        ProcessInfo { pid, exe_path: PathBuf::from(path) }
+        ProcessInfo {
+            pid,
+            exe_path: PathBuf::from(path),
+        }
     }
 
     #[test]
@@ -105,13 +123,31 @@ mod tests {
         let mut w = Watcher::new(lister);
 
         let p1 = w.poll().unwrap();
-        assert_eq!(p1, vec![ProcessEvent::Started { pid: 1, exe_path: "a.exe".into() }]);
+        assert_eq!(
+            p1,
+            vec![ProcessEvent::Started {
+                pid: 1,
+                exe_path: "a.exe".into()
+            }]
+        );
 
         let p2 = w.poll().unwrap();
-        assert_eq!(p2, vec![ProcessEvent::Started { pid: 2, exe_path: "b.exe".into() }]);
+        assert_eq!(
+            p2,
+            vec![ProcessEvent::Started {
+                pid: 2,
+                exe_path: "b.exe".into()
+            }]
+        );
 
         let p3 = w.poll().unwrap();
-        assert_eq!(p3, vec![ProcessEvent::Stopped { pid: 1, exe_path: "a.exe".into() }]);
+        assert_eq!(
+            p3,
+            vec![ProcessEvent::Stopped {
+                pid: 1,
+                exe_path: "a.exe".into()
+            }]
+        );
     }
 
     #[test]

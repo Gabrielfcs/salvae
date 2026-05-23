@@ -64,7 +64,10 @@ unsafe fn list_processes() -> Result<Vec<ProcessInfo>, WatchError> {
         loop {
             let pid = entry.th32ProcessID;
             if let Some(path) = full_path(pid) {
-                out.push(ProcessInfo { pid, exe_path: path });
+                out.push(ProcessInfo {
+                    pid,
+                    exe_path: path,
+                });
             }
             if Process32NextW(snapshot, &mut entry) == 0 {
                 break;
