@@ -144,154 +144,174 @@ impl SalvaeApp {
         self.vm.discovered_channels.clear();
     }
 
-    /// The create-group dialog: paste a bot token, pick a server + channel, set
-    /// a name + password. No ids are typed by hand.
+    /// The create-group dialog, opened as a separate OS window (its own
+    /// viewport). Returns nothing; closes itself on create or window-close.
     fn create_modal(&mut self, ctx: &egui::Context) {
         if !self.forms.show_create {
             return;
         }
-        let mut open = true;
-        egui::Window::new("Create group")
-            .collapsible(false)
-            .resizable(false)
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .open(&mut open)
-            .show(ctx, |ui| {
-                ui.set_min_width(360.0);
-
-                ui.label("Group name");
-                ui.text_edit_singleline(&mut self.forms.new_name);
-                ui.add_space(4.0);
-
-                ui.label("Shared password");
-                ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
-                ui.add_space(4.0);
-
-                ui.label("Bot token");
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.forms.new_token)
-                            .password(true)
-                            .desired_width(220.0),
-                    );
-                    let token = self.forms.new_token.trim().to_string();
-                    if ui.button("Find servers").clicked() && !token.is_empty() {
-                        self.forms.create_guild = None;
-                        self.forms.create_channel = None;
-                        self.send(Command::FetchGuilds { token });
+        let mut close = false;
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("salvae_create_group"),
+            egui::ViewportBuilder::default()
+                .with_title("Create group")
+                .with_inner_size([440.0, 440.0])
+                .with_resizable(false),
+            |vctx, _class| {
+                egui::CentralPanel::default().show(vctx, |ui| {
+                    if self.create_form_ui(ui) {
+                        close = true;
                     }
                 });
-                ui.label(
-                    egui::RichText::new("Add the bot to your server first, then paste its token.")
-                        .color(theme::MUTED)
-                        .small(),
-                );
-                ui.add_space(4.0);
-
-                // Server picker (populated by FetchGuilds).
-                let guilds = self.vm.discovered_guilds.clone();
-                let token = self.forms.new_token.trim().to_string();
-                ui.label("Server");
-                let prev_guild = self.forms.create_guild;
-                egui::ComboBox::from_id_salt("create_guild")
-                    .selected_text(label_for(
-                        &guilds,
-                        self.forms.create_guild,
-                        "Select a server",
-                    ))
-                    .show_ui(ui, |ui| {
-                        for g in &guilds {
-                            ui.selectable_value(&mut self.forms.create_guild, Some(g.id), &g.name);
-                        }
-                    });
-                if self.forms.create_guild != prev_guild {
-                    self.forms.create_channel = None;
-                    if let Some(gid) = self.forms.create_guild {
-                        self.send(Command::FetchChannels {
-                            token: token.clone(),
-                            guild_id: gid,
-                        });
-                    }
+                if vctx.input(|i| i.viewport().close_requested()) {
+                    close = true;
                 }
-                ui.add_space(4.0);
-
-                // Channel picker (populated by FetchChannels).
-                let channels = self.vm.discovered_channels.clone();
-                ui.label("Channel");
-                egui::ComboBox::from_id_salt("create_channel")
-                    .selected_text(label_for(
-                        &channels,
-                        self.forms.create_channel,
-                        "Select a channel",
-                    ))
-                    .show_ui(ui, |ui| {
-                        for c in &channels {
-                            ui.selectable_value(
-                                &mut self.forms.create_channel,
-                                Some(c.id),
-                                format!("# {}", c.name),
-                            );
-                        }
-                    });
-                ui.add_space(8.0);
-
-                let ready = !self.forms.new_name.trim().is_empty()
-                    && !self.forms.new_password.is_empty()
-                    && self.forms.create_guild.is_some()
-                    && self.forms.create_channel.is_some();
-                ui.add_enabled_ui(ready, |ui| {
-                    if theme::primary_button(ui, "Create group").clicked() {
-                        self.send(Command::CreateGroup {
-                            name: self.forms.new_name.clone(),
-                            password: self.forms.new_password.clone(),
-                            token: self.forms.new_token.clone(),
-                            guild_id: self.forms.create_guild.unwrap(),
-                            channel_id: self.forms.create_channel.unwrap(),
-                        });
-                        self.forms.show_create = false;
-                    }
-                });
-            });
-        // Honour the window's close (X) button.
-        if !open {
+            },
+        );
+        if close {
             self.forms.show_create = false;
         }
     }
 
-    /// The join-group dialog: paste an invite + the shared password.
+    /// Body of the create-group form. Returns `true` once the group has been
+    /// submitted (so the caller can close the window).
+    fn create_form_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        ui.label("Group name");
+        ui.text_edit_singleline(&mut self.forms.new_name);
+        ui.add_space(4.0);
+
+        ui.label("Shared password");
+        ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
+        ui.add_space(4.0);
+
+        ui.label("Bot token");
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.forms.new_token)
+                    .password(true)
+                    .desired_width(260.0),
+            );
+            let token = self.forms.new_token.trim().to_string();
+            if ui.button("Find servers").clicked() && !token.is_empty() {
+                self.forms.create_guild = None;
+                self.forms.create_channel = None;
+                self.send(Command::FetchGuilds { token });
+            }
+        });
+        ui.label(
+            egui::RichText::new("Add the bot to your server first, then paste its token.")
+                .color(theme::MUTED)
+                .small(),
+        );
+        ui.add_space(4.0);
+
+        // Server picker (populated by FetchGuilds).
+        let guilds = self.vm.discovered_guilds.clone();
+        let token = self.forms.new_token.trim().to_string();
+        ui.label("Server");
+        let prev_guild = self.forms.create_guild;
+        egui::ComboBox::from_id_salt("create_guild")
+            .selected_text(label_for(
+                &guilds,
+                self.forms.create_guild,
+                "Select a server",
+            ))
+            .show_ui(ui, |ui| {
+                for g in &guilds {
+                    ui.selectable_value(&mut self.forms.create_guild, Some(g.id), &g.name);
+                }
+            });
+        if self.forms.create_guild != prev_guild {
+            self.forms.create_channel = None;
+            if let Some(gid) = self.forms.create_guild {
+                self.send(Command::FetchChannels {
+                    token: token.clone(),
+                    guild_id: gid,
+                });
+            }
+        }
+        ui.add_space(4.0);
+
+        // Channel picker (populated by FetchChannels).
+        let channels = self.vm.discovered_channels.clone();
+        ui.label("Channel");
+        egui::ComboBox::from_id_salt("create_channel")
+            .selected_text(label_for(
+                &channels,
+                self.forms.create_channel,
+                "Select a channel",
+            ))
+            .show_ui(ui, |ui| {
+                for c in &channels {
+                    ui.selectable_value(
+                        &mut self.forms.create_channel,
+                        Some(c.id),
+                        format!("# {}", c.name),
+                    );
+                }
+            });
+        ui.add_space(8.0);
+
+        let ready = !self.forms.new_name.trim().is_empty()
+            && !self.forms.new_password.is_empty()
+            && self.forms.create_guild.is_some()
+            && self.forms.create_channel.is_some();
+        let mut created = false;
+        ui.add_enabled_ui(ready, |ui| {
+            if theme::primary_button(ui, "Create group").clicked() {
+                self.send(Command::CreateGroup {
+                    name: self.forms.new_name.clone(),
+                    password: self.forms.new_password.clone(),
+                    token: self.forms.new_token.clone(),
+                    guild_id: self.forms.create_guild.unwrap(),
+                    channel_id: self.forms.create_channel.unwrap(),
+                });
+                created = true;
+            }
+        });
+        created
+    }
+
+    /// The join-group dialog, opened as a separate OS window (its own viewport).
     fn join_modal(&mut self, ctx: &egui::Context) {
         if !self.forms.show_join {
             return;
         }
-        let mut open = true;
-        egui::Window::new("Join group")
-            .collapsible(false)
-            .resizable(false)
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .open(&mut open)
-            .show(ctx, |ui| {
-                ui.set_min_width(360.0);
-                ui.label("Invite");
-                ui.add(egui::TextEdit::multiline(&mut self.forms.join_invite).desired_rows(3));
-                ui.add_space(4.0);
-                ui.label("Shared password");
-                ui.add(egui::TextEdit::singleline(&mut self.forms.join_password).password(true));
-                ui.add_space(8.0);
-                let ready = !self.forms.join_invite.trim().is_empty()
-                    && !self.forms.join_password.is_empty();
-                ui.add_enabled_ui(ready, |ui| {
-                    if theme::primary_button(ui, "Join group").clicked() {
-                        self.send(Command::JoinGroup {
-                            password: self.forms.join_password.clone(),
-                            invite: self.forms.join_invite.clone(),
-                        });
-                        self.forms.show_join = false;
-                    }
+        let mut close = false;
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("salvae_join_group"),
+            egui::ViewportBuilder::default()
+                .with_title("Join group")
+                .with_inner_size([440.0, 260.0])
+                .with_resizable(false),
+            |vctx, _class| {
+                egui::CentralPanel::default().show(vctx, |ui| {
+                    ui.label("Invite");
+                    ui.add(egui::TextEdit::multiline(&mut self.forms.join_invite).desired_rows(3));
+                    ui.add_space(4.0);
+                    ui.label("Shared password");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.forms.join_password).password(true),
+                    );
+                    ui.add_space(8.0);
+                    let ready = !self.forms.join_invite.trim().is_empty()
+                        && !self.forms.join_password.is_empty();
+                    ui.add_enabled_ui(ready, |ui| {
+                        if theme::primary_button(ui, "Join group").clicked() {
+                            self.send(Command::JoinGroup {
+                                password: self.forms.join_password.clone(),
+                                invite: self.forms.join_invite.clone(),
+                            });
+                            close = true;
+                        }
+                    });
                 });
-            });
-        if !open {
+                if vctx.input(|i| i.viewport().close_requested()) {
+                    close = true;
+                }
+            },
+        );
+        if close {
             self.forms.show_join = false;
         }
     }
@@ -467,23 +487,6 @@ impl SalvaeApp {
     }
 }
 
-/// Paint a full-window dim layer that swallows input, so the panels behind an
-/// open dialog can't be interacted with (egui 0.29 has no built-in modal). The
-/// dialog windows are drawn afterwards on the same foreground order, so they
-/// sit above this shield.
-fn modal_shield(ctx: &egui::Context) {
-    let screen = ctx.screen_rect();
-    egui::Area::new(egui::Id::new("modal_shield"))
-        .order(egui::Order::Foreground)
-        .fixed_pos(screen.min)
-        .show(ctx, |ui| {
-            ui.painter()
-                .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
-            // Consume any click/drag so it never reaches the panels below.
-            ui.allocate_rect(screen, egui::Sense::click_and_drag());
-        });
-}
-
 /// A picker item with a numeric id and a display name (server or channel).
 trait IdName {
     fn item_id(&self) -> u64;
@@ -577,12 +580,7 @@ impl eframe::App for SalvaeApp {
                 self.games_panel(ui);
             });
 
-        // Dim + block the panels behind any open dialog.
-        let modal_open =
-            self.forms.show_create || self.forms.show_join || !self.vm.pending_conflicts.is_empty();
-        if modal_open {
-            modal_shield(ctx);
-        }
+        // Create/Join open as their own OS windows (separate viewports).
         self.create_modal(ctx);
         self.join_modal(ctx);
         self.conflict_modal(ctx);
