@@ -38,7 +38,9 @@ where
                         if code == 404 {
                             return Err(VaultError::NotFound);
                         }
-                        return Err(VaultError::Transport(format!("Discord returned HTTP {code}")));
+                        return Err(VaultError::Transport(format!(
+                            "Discord returned HTTP {code}"
+                        )));
                     }
                 }
             }
@@ -48,6 +50,9 @@ where
 }
 
 #[cfg(test)]
+// Test closures intentionally construct `ureq::Error` (a large external type)
+// to exercise the retry loop; boxing it in tests adds no value.
+#[allow(clippy::result_large_err)]
 mod tests {
     use super::*;
     use ureq::{Error, Response};
@@ -59,10 +64,14 @@ mod tests {
     #[test]
     fn returns_ok_on_first_success() {
         let mut calls = 0;
-        let r = execute_with_retry(3, |_| {}, || {
-            calls += 1;
-            Ok(Response::new(200, "OK", "{}").unwrap())
-        });
+        let r = execute_with_retry(
+            3,
+            |_| {},
+            || {
+                calls += 1;
+                Ok(Response::new(200, "OK", "{}").unwrap())
+            },
+        );
         assert!(r.is_ok());
         assert_eq!(calls, 1);
     }
@@ -70,14 +79,18 @@ mod tests {
     #[test]
     fn retries_on_429_then_succeeds() {
         let mut calls = 0;
-        let r = execute_with_retry(3, |_| {}, || {
-            calls += 1;
-            if calls == 1 {
-                Err(status_err(429))
-            } else {
-                Ok(Response::new(200, "OK", "{}").unwrap())
-            }
-        });
+        let r = execute_with_retry(
+            3,
+            |_| {},
+            || {
+                calls += 1;
+                if calls == 1 {
+                    Err(status_err(429))
+                } else {
+                    Ok(Response::new(200, "OK", "{}").unwrap())
+                }
+            },
+        );
         assert!(r.is_ok());
         assert_eq!(calls, 2);
     }
@@ -85,10 +98,14 @@ mod tests {
     #[test]
     fn gives_up_after_max_retries_on_persistent_429() {
         let mut calls = 0;
-        let r = execute_with_retry(2, |_| {}, || {
-            calls += 1;
-            Err(status_err(429))
-        });
+        let r = execute_with_retry(
+            2,
+            |_| {},
+            || {
+                calls += 1;
+                Err(status_err(429))
+            },
+        );
         assert!(matches!(r, Err(VaultError::Transport(_))));
         assert_eq!(calls, 3); // initial attempt + 2 retries
     }
@@ -96,10 +113,14 @@ mod tests {
     #[test]
     fn maps_404_to_not_found_without_retry() {
         let mut calls = 0;
-        let r = execute_with_retry(3, |_| {}, || {
-            calls += 1;
-            Err(status_err(404))
-        });
+        let r = execute_with_retry(
+            3,
+            |_| {},
+            || {
+                calls += 1;
+                Err(status_err(404))
+            },
+        );
         assert!(matches!(r, Err(VaultError::NotFound)));
         assert_eq!(calls, 1);
     }
@@ -107,10 +128,14 @@ mod tests {
     #[test]
     fn maps_other_status_to_transport_without_retry() {
         let mut calls = 0;
-        let r = execute_with_retry(3, |_| {}, || {
-            calls += 1;
-            Err(status_err(500))
-        });
+        let r = execute_with_retry(
+            3,
+            |_| {},
+            || {
+                calls += 1;
+                Err(status_err(500))
+            },
+        );
         assert!(matches!(r, Err(VaultError::Transport(_))));
         assert_eq!(calls, 1);
     }

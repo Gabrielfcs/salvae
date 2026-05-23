@@ -37,8 +37,12 @@ fn live_push_and_download_round_trip() {
     getrandom::getrandom(&mut rnd).unwrap();
     let game_id = format!("livetest-{}", u64::from_le_bytes(rnd));
 
-    let v1 = vault.push_version(&game_id, b"live save v1", "tester", "ci", 1, 2).unwrap();
-    let v2 = vault.push_version(&game_id, b"live save v2", "tester", "ci", 2, 2).unwrap();
+    let v1 = vault
+        .push_version(&game_id, b"live save v1", "tester", "ci", 1, 2)
+        .unwrap();
+    let v2 = vault
+        .push_version(&game_id, b"live save v2", "tester", "ci", 2, 2)
+        .unwrap();
     assert_eq!((v1.number, v2.number), (1, 2));
 
     let latest = vault.latest_version(&game_id).unwrap().unwrap();

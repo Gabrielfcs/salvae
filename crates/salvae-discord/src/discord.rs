@@ -25,11 +25,17 @@ pub struct DiscordChannel {
     max_retries: u32,
 }
 
+// `ureq::Error` is a large external error type surfaced on the rare error path
+// of the request closures below; boxing it would only churn the retry helper's
+// signature, so we accept clippy's `result_large_err` here.
+#[allow(clippy::result_large_err)]
 impl DiscordChannel {
     /// Create a channel client for `channel_id` authenticating with bot `token`.
     pub fn new(token: impl Into<String>, channel_id: u64) -> Self {
         Self {
-            agent: ureq::AgentBuilder::new().timeout(Duration::from_secs(30)).build(),
+            agent: ureq::AgentBuilder::new()
+                .timeout(Duration::from_secs(30))
+                .build(),
             base_url: DISCORD_API_BASE.to_string(),
             token: token.into(),
             channel_id,
@@ -59,15 +65,19 @@ impl DiscordChannel {
         before: Option<u64>,
         limit: u16,
     ) -> Result<Vec<Message>, VaultError> {
-        let mut url =
-            format!("{}/channels/{}/messages?limit={}", self.base_url, self.channel_id, limit);
+        let mut url = format!(
+            "{}/channels/{}/messages?limit={}",
+            self.base_url, self.channel_id, limit
+        );
         if let Some(b) = before {
             url.push_str(&format!("&before={b}"));
         }
         let resp = execute_with_retry(self.max_retries, Self::sleep_secs, || {
             self.authed(self.agent.get(&url)).call()
         })?;
-        let body = resp.into_string().map_err(|e| VaultError::Transport(e.to_string()))?;
+        let body = resp
+            .into_string()
+            .map_err(|e| VaultError::Transport(e.to_string()))?;
         let value: serde_json::Value =
             serde_json::from_str(&body).map_err(|e| VaultError::Transport(e.to_string()))?;
         parse::parse_messages(&value)
@@ -97,7 +107,9 @@ impl DiscordChannel {
                 .set("Content-Type", &content_type)
                 .send_bytes(&body)
         })?;
-        let resp_body = resp.into_string().map_err(|e| VaultError::Transport(e.to_string()))?;
+        let resp_body = resp
+            .into_string()
+            .map_err(|e| VaultError::Transport(e.to_string()))?;
         let value: serde_json::Value =
             serde_json::from_str(&resp_body).map_err(|e| VaultError::Transport(e.to_string()))?;
         parse::parse_message(&value)
@@ -107,11 +119,16 @@ impl DiscordChannel {
     /// Discord CDN URLs expire, so this re-fetches the message to obtain a
     /// fresh URL, then downloads it.
     pub fn fetch_attachment(&self, message_id: u64, filename: &str) -> Result<Vec<u8>, VaultError> {
-        let url = format!("{}/channels/{}/messages/{}", self.base_url, self.channel_id, message_id);
+        let url = format!(
+            "{}/channels/{}/messages/{}",
+            self.base_url, self.channel_id, message_id
+        );
         let resp = execute_with_retry(self.max_retries, Self::sleep_secs, || {
             self.authed(self.agent.get(&url)).call()
         })?;
-        let body = resp.into_string().map_err(|e| VaultError::Transport(e.to_string()))?;
+        let body = resp
+            .into_string()
+            .map_err(|e| VaultError::Transport(e.to_string()))?;
         let value: serde_json::Value =
             serde_json::from_str(&body).map_err(|e| VaultError::Transport(e.to_string()))?;
         let cdn_url = parse::attachment_url(&value, filename).ok_or(VaultError::NotFound)?;
@@ -128,7 +145,10 @@ impl DiscordChannel {
 
     /// DELETE a message by id.
     pub fn remove_message(&self, message_id: u64) -> Result<(), VaultError> {
-        let url = format!("{}/channels/{}/messages/{}", self.base_url, self.channel_id, message_id);
+        let url = format!(
+            "{}/channels/{}/messages/{}",
+            self.base_url, self.channel_id, message_id
+        );
         execute_with_retry(self.max_retries, Self::sleep_secs, || {
             self.authed(self.agent.delete(&url)).call()
         })?;
@@ -166,6 +186,14 @@ impl Channel for DiscordChannel {
     }
 }
 
+/// A random multipart boundary unlikely to appear in any attachment bytes.
+fn random_boundary() -> String {
+    let mut bytes = [0u8; 16];
+    getrandom::getrandom(&mut bytes).expect("OS RNG failure");
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("salvaeboundary{hex}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,7 +223,10 @@ mod tests {
     fn fetch_messages_sends_before_cursor() {
         let mut server = mockito::Server::new();
         let m = server
-            .mock("GET", mockito::Matcher::Regex(r"/channels/123/messages".to_string()))
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"/channels/123/messages".to_string()),
+            )
             .match_query(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::UrlEncoded("limit".into(), "2".into()),
                 mockito::Matcher::UrlEncoded("before".into(), "50".into()),
@@ -305,7 +336,10 @@ mod tests {
 
         let mut server = mockito::Server::new();
         let m = server
-            .mock("GET", mockito::Matcher::Regex(r"/channels/123/messages.*".to_string()))
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"/channels/123/messages.*".to_string()),
+            )
             .with_status(200)
             .with_body(r#"[{"id":"1","content":"x","attachments":[]}]"#)
             .create();
@@ -314,12 +348,4 @@ mod tests {
         assert_eq!(count_via_channel(&ch), 1);
         m.assert();
     }
-}
-
-/// A random multipart boundary unlikely to appear in any attachment bytes.
-fn random_boundary() -> String {
-    let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).expect("OS RNG failure");
-    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    format!("salvaeboundary{hex}")
 }

@@ -18,21 +18,32 @@ pub fn parse_message(v: &Value) -> Result<Message, VaultError> {
         .and_then(Value::as_str)
         .ok_or_else(|| VaultError::Transport("message JSON missing string `id`".into()))?;
     let id = parse_snowflake(id_str)?;
-    let content = v.get("content").and_then(Value::as_str).unwrap_or("").to_string();
+    let content = v
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
 
     let mut attachments = Vec::new();
     if let Some(arr) = v.get("attachments").and_then(Value::as_array) {
         for a in arr {
-            let aid_str = a
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| VaultError::Transport("attachment JSON missing string `id`".into()))?;
+            let aid_str = a.get("id").and_then(Value::as_str).ok_or_else(|| {
+                VaultError::Transport("attachment JSON missing string `id`".into())
+            })?;
             let aid = parse_snowflake(aid_str)?;
-            let filename = a.get("filename").and_then(Value::as_str).unwrap_or("").to_string();
+            let filename = a
+                .get("filename")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             attachments.push(AttachmentRef { id: aid, filename });
         }
     }
-    Ok(Message { id, content, attachments })
+    Ok(Message {
+        id,
+        content,
+        attachments,
+    })
 }
 
 /// Parse a Discord "get channel messages" array response.
@@ -74,7 +85,13 @@ mod tests {
         let m = parse_message(&msg_json()).unwrap();
         assert_eq!(m.id, 100);
         assert_eq!(m.content, "the header");
-        assert_eq!(m.attachments, vec![AttachmentRef { id: 9001, filename: "chunk_0.bin".into() }]);
+        assert_eq!(
+            m.attachments,
+            vec![AttachmentRef {
+                id: 9001,
+                filename: "chunk_0.bin".into()
+            }]
+        );
     }
 
     #[test]
@@ -91,7 +108,10 @@ mod tests {
 
     #[test]
     fn missing_or_bad_id_is_a_transport_error() {
-        assert!(matches!(parse_snowflake("not-a-number"), Err(VaultError::Transport(_))));
+        assert!(matches!(
+            parse_snowflake("not-a-number"),
+            Err(VaultError::Transport(_))
+        ));
         let bad = serde_json::json!({ "content": "x", "attachments": [] });
         assert!(matches!(parse_message(&bad), Err(VaultError::Transport(_))));
     }
@@ -99,7 +119,10 @@ mod tests {
     #[test]
     fn parse_messages_requires_an_array() {
         let not_array = serde_json::json!({ "id": "1" });
-        assert!(matches!(parse_messages(&not_array), Err(VaultError::Transport(_))));
+        assert!(matches!(
+            parse_messages(&not_array),
+            Err(VaultError::Transport(_))
+        ));
     }
 
     #[test]
