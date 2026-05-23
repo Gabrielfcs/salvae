@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use salvae_config::group::GroupConfig;
-use salvae_sync::engine::SyncEngine;
+use salvae_sync::engine::{PushOutcome, SyncEngine};
 use salvae_vault::channel::Channel;
 use salvae_watch::detector::{Detector, GameEvent};
 use salvae_watch::process::{ProcessLister, Watcher};
@@ -84,12 +84,18 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         let Some((rt, folder)) = self.resolve(game_id) else {
             return Ok(AgentOutcome::NotConfigured);
         };
+        // Stop advertising that we're playing as soon as we close, even if the
+        // push below fails (the marker is advisory and self-heals on next open).
         rt.engine.end_playing(game_id)?;
         if !folder.exists() {
             return Ok(AgentOutcome::NoFolder);
         }
         let push = rt.engine.push(game_id, &folder, now_ms)?;
-        save_state(rt)?;
+        // A conflict didn't advance our synced version, so only persist when the
+        // push actually changed state.
+        if !matches!(push, PushOutcome::Conflict { .. }) {
+            save_state(rt)?;
+        }
         Ok(AgentOutcome::Closed { push })
     }
 
