@@ -32,7 +32,10 @@ pub fn arm(roots: &[PathBuf]) -> Result<ArmedScan, DetectError> {
 
 /// Re-snapshot each armed root, diff, rank by `game_name`, and return absolute
 /// candidate folders sorted by descending score.
-pub fn collect(armed: &ArmedScan, game_name: &str) -> Result<Vec<DiscoveredCandidate>, DetectError> {
+pub fn collect(
+    armed: &ArmedScan,
+    game_name: &str,
+) -> Result<Vec<DiscoveredCandidate>, DetectError> {
     let mut candidates = Vec::new();
     for (root, before) in &armed.roots {
         let after = capture(root, SCAN_DEPTH)?;

@@ -31,9 +31,7 @@ impl ViewModel {
             Event::InstalledGames(g) => self.installed_games = g,
             Event::Invite(s) => {
                 self.last_invite = Some(s);
-                self.push_activity(ActivityView::info(
-                    "Group created — share the invite below",
-                ));
+                self.push_activity(ActivityView::info("Group created — share the invite below"));
             }
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);
