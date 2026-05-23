@@ -149,7 +149,9 @@ impl<S: SecretStore> ConfigStore<S> {
             .iter_mut()
             .find(|g| g.id == group_id)
             .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))?;
-        group.game_paths.insert(game_id.to_string(), folder.to_string());
+        group
+            .game_paths
+            .insert(game_id.to_string(), folder.to_string());
         self.save()
     }
 }
@@ -282,10 +284,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         let group = {
-            let mut store = ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+            let mut store =
+                ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
             let g = store.create_group("Crew", "pw", "tok", 1, 2).unwrap().0;
             store
-                .set_game_path(&g.id, "steam:892970", "C:/Users/me/AppData/LocalLow/Valheim")
+                .set_game_path(
+                    &g.id,
+                    "steam:892970",
+                    "C:/Users/me/AppData/LocalLow/Valheim",
+                )
                 .unwrap();
             g
         };
