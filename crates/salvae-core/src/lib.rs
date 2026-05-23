@@ -8,6 +8,7 @@ pub mod compress;
 pub mod chunk;
 pub mod hash;
 pub mod version;
+pub mod seal;
 
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
