@@ -198,6 +198,13 @@ impl<C: Channel> SyncEngine<C> {
         match resolution {
             Resolution::PushLocal => {
                 let packed = pack::pack_folder(save_folder)?;
+                // If local already equals the latest remote, nothing to upload.
+                if let Some(latest) = self.vault().latest_version(game_id)? {
+                    if latest.content_hash == content_hash(&packed) {
+                        self.state.set(game_id, latest.number);
+                        return Ok(PushOutcome::NoChange(latest.number));
+                    }
+                }
                 self.do_push(game_id, &packed, now_ms)
             }
             Resolution::TakeRemote => {
