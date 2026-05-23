@@ -1,0 +1,25 @@
+[package]
+name = "salvae-ui"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Tray app + desktop UI for Salvaê: group setup, save-folder config, conflict resolution, history/restore."
+
+[dependencies]
+salvae-core = { path = "../salvae-core" }
+salvae-config = { path = "../salvae-config" }
+salvae-sync = { path = "../salvae-sync" }
+salvae-detect = { path = "../salvae-detect" }
+salvae-watch = { path = "../salvae-watch" }
+salvae-vault = { path = "../salvae-vault" }
+salvae-discord = { path = "../salvae-discord" }
+salvae-agent = { path = "../salvae-agent" }
+eframe = "0.29"
+egui = "0.29"
+rfd = "0.15"
+tray-icon = "0.19"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
