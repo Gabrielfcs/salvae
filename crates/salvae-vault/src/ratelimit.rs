@@ -28,7 +28,7 @@ pub fn retry_after_secs(status: u16, header: impl Fn(&str) -> Option<String>) ->
 mod tests {
     use super::*;
 
-    fn header_map(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + '_ {
+    fn header_map<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
         move |name: &str| {
             pairs
                 .iter()
