@@ -5,3 +5,4 @@
 //! retrieve encrypted save versions in a private Discord channel.
 
 pub mod parse;
+pub mod retry;
