@@ -57,6 +57,36 @@ pub trait Channel {
     fn delete_message(&self, message_id: MessageId) -> Result<(), VaultError>;
 }
 
+impl<C: Channel + ?Sized> Channel for &C {
+    fn list_messages(
+        &self,
+        before: Option<MessageId>,
+        limit: u16,
+    ) -> Result<Vec<Message>, VaultError> {
+        (**self).list_messages(before, limit)
+    }
+
+    fn send_message(
+        &self,
+        content: &str,
+        attachments: &[(String, Vec<u8>)],
+    ) -> Result<Message, VaultError> {
+        (**self).send_message(content, attachments)
+    }
+
+    fn download_attachment(
+        &self,
+        message_id: MessageId,
+        attachment: &AttachmentRef,
+    ) -> Result<Vec<u8>, VaultError> {
+        (**self).download_attachment(message_id, attachment)
+    }
+
+    fn delete_message(&self, message_id: MessageId) -> Result<(), VaultError> {
+        (**self).delete_message(message_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

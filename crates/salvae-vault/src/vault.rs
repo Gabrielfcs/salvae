@@ -129,6 +129,35 @@ impl<C: Channel> Vault<C> {
         Ok(version)
     }
 
+    /// Download, decrypt, decompress and integrity-check version `number` of
+    /// `game_id`, returning the original save bytes.
+    pub fn download(&self, game_id: &str, number: u64) -> Result<Vec<u8>, VaultError> {
+        let (message, version) = self
+            .scan(game_id)?
+            .into_iter()
+            .find(|(_, v)| v.number == number)
+            .ok_or(VaultError::NotFound)?;
+
+        // Collect chunk attachments in order: chunk_0.bin .. chunk_{n-1}.bin
+        let mut chunks: Vec<Vec<u8>> = Vec::with_capacity(version.chunk_count as usize);
+        for i in 0..version.chunk_count {
+            let filename = format!("chunk_{i}.bin");
+            let att = message
+                .attachments
+                .iter()
+                .find(|a| a.filename == filename)
+                .ok_or(VaultError::NotFound)?;
+            chunks.push(self.channel.download_attachment(message.id, att)?);
+        }
+
+        let blob = chunk::join(&chunks);
+        let save = seal::open(&self.key, &blob)?;
+        if hash::content_hash(&save) != version.content_hash {
+            return Err(VaultError::Integrity);
+        }
+        Ok(save)
+    }
+
     /// Placeholder pruning — replaced with the real implementation in Task 8.
     fn prune(&self, _game_id: &str, _max_versions: usize) -> Result<(), VaultError> {
         Ok(())
@@ -228,5 +257,42 @@ mod tests {
         let big: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
         let v = vault.push_version("game", &big, "a", "d", 1, 10).unwrap();
         assert!(v.chunk_count > 1, "expected multiple chunks, got {}", v.chunk_count);
+    }
+
+    #[test]
+    fn download_recovers_exact_save_bytes() {
+        let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]);
+        let save = b"the actual world save bytes \x00\x01\x02";
+        vault.push_version("valheim", save, "a", "d", 1, 10).unwrap();
+        let got = vault.download("valheim", 1).unwrap();
+        assert_eq!(got, save);
+    }
+
+    #[test]
+    fn download_recovers_multichunk_save() {
+        let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]).with_max_chunk_size(64);
+        let big: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
+        let v = vault.push_version("game", &big, "a", "d", 1, 10).unwrap();
+        assert!(v.chunk_count > 1);
+        assert_eq!(vault.download("game", v.number).unwrap(), big);
+    }
+
+    #[test]
+    fn download_missing_version_is_not_found() {
+        let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]);
+        vault.push_version("valheim", b"x", "a", "d", 1, 10).unwrap();
+        assert!(matches!(vault.download("valheim", 99), Err(VaultError::NotFound)));
+        assert!(matches!(vault.download("other", 1), Err(VaultError::NotFound)));
+    }
+
+    #[test]
+    fn download_with_wrong_key_fails() {
+        let ch = InMemoryChannel::new();
+        Vault::new(&ch, [1u8; 32])
+            .push_version("valheim", b"secret save", "a", "d", 1, 10)
+            .unwrap();
+        // A different key cannot open the sealed blob.
+        let wrong = Vault::new(&ch, [2u8; 32]);
+        assert!(wrong.download("valheim", 1).is_err());
     }
 }
