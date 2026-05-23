@@ -15,7 +15,7 @@ salvae-watch = { path = "../salvae-watch" }
 salvae-vault = { path = "../salvae-vault" }
 salvae-discord = { path = "../salvae-discord" }
 salvae-agent = { path = "../salvae-agent" }
-eframe = "0.29"
+eframe = { version = "0.29", features = ["persistence"] }
 egui = "0.29"
 rfd = "0.15"
 tray-icon = "0.19"

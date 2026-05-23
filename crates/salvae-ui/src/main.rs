@@ -37,12 +37,18 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Salvaê")
-            .with_inner_size([900.0, 600.0]),
+            .with_inner_size([900.0, 600.0])
+            // Don't let the window shrink below the default opening size.
+            .with_min_inner_size([900.0, 600.0]),
+        // Restore the last window position/size on the next run (requires the
+        // eframe `persistence` feature). On by default, listed for clarity.
+        persist_window: true,
         ..Default::default()
     };
 
     eframe::run_native(
-        "Salvaê",
+        // App name → on-disk storage key for the persisted window geometry.
+        "salvae",
         options,
         Box::new(move |cc| {
             theme::apply(&cc.egui_ctx);
