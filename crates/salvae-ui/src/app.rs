@@ -6,6 +6,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use eframe::egui;
 
 use crate::command::{Command, Event};
+use crate::theme;
 use crate::view::{human_size, ActivityKind};
 use crate::viewmodel::ViewModel;
 
@@ -111,7 +112,7 @@ impl SalvaeApp {
             ui.text_edit_singleline(&mut self.forms.new_guild);
             ui.label("Channel id");
             ui.text_edit_singleline(&mut self.forms.new_channel);
-            if ui.button("Create").clicked() {
+            if theme::primary_button(ui, "Create group").clicked() {
                 if let (Ok(guild_id), Ok(channel_id)) = (
                     self.forms.new_guild.trim().parse::<u64>(),
                     self.forms.new_channel.trim().parse::<u64>(),
@@ -136,7 +137,7 @@ impl SalvaeApp {
             ui.text_edit_multiline(&mut self.forms.join_invite);
             ui.label("Password");
             ui.add(egui::TextEdit::singleline(&mut self.forms.join_password).password(true));
-            if ui.button("Join").clicked() {
+            if theme::primary_button(ui, "Join group").clicked() {
                 self.send(Command::JoinGroup {
                     password: self.forms.join_password.clone(),
                     invite: self.forms.join_invite.clone(),
@@ -176,17 +177,20 @@ impl SalvaeApp {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for game in &self.vm.installed_games {
                 let mapping = group.games.iter().find(|m| m.game_id == game.id);
-                ui.group(|ui| {
+                theme::card_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.strong(&game.name);
-                        ui.label(format!("({})", game.id));
+                        ui.label(egui::RichText::new(format!("({})", game.id)).color(theme::MUTED));
                     });
                     match mapping {
                         Some(m) => {
-                            ui.label(format!("Folder: {}", m.folder));
+                            ui.label(
+                                egui::RichText::new(format!("Folder: {}", m.folder))
+                                    .color(theme::MUTED),
+                            );
                         }
                         None => {
-                            ui.label("Folder: not set");
+                            ui.label(egui::RichText::new("Folder: not set").color(theme::MUTED));
                         }
                     }
 
@@ -206,7 +210,10 @@ impl SalvaeApp {
                                     game_id: game.id.clone(),
                                 });
                             }
-                            ui.label("scan armed: launch & close the game");
+                            ui.label(
+                                egui::RichText::new("scan armed — launch & close the game")
+                                    .color(theme::MUTED),
+                            );
                         } else if ui.button("Auto-find save (scan)").clicked() {
                             self.send(Command::ArmScan {
                                 game_id: game.id.clone(),
@@ -220,7 +227,8 @@ impl SalvaeApp {
                     });
 
                     if let Some(cands) = self.vm.scan_results.get(&game.id) {
-                        ui.label("Candidate save folders:");
+                        ui.add_space(4.0);
+                        ui.strong("Candidate save folders");
                         for c in cands {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
@@ -240,7 +248,8 @@ impl SalvaeApp {
                     }
 
                     if let Some(versions) = self.vm.history.get(&game.id) {
-                        ui.label("Versions:");
+                        ui.add_space(4.0);
+                        ui.strong("Versions");
                         for v in versions.iter().rev() {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
@@ -259,6 +268,7 @@ impl SalvaeApp {
                         }
                     }
                 });
+                ui.add_space(8.0);
             }
         });
     }
@@ -276,9 +286,13 @@ impl SalvaeApp {
                     "A newer save exists for {} (version {} by {}).",
                     conflict.game_id, conflict.remote.number, conflict.remote.author
                 ));
-                ui.label("Overwriting it may lose progress.");
+                ui.label(
+                    egui::RichText::new("Overwriting it may lose progress.")
+                        .color(egui::Color32::from_rgb(245, 158, 11)),
+                );
+                ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Keep the newer remote save").clicked() {
+                    if theme::primary_button(ui, "Keep the newer remote save").clicked() {
                         self.send(Command::Resolve {
                             game_id: conflict.game_id.clone(),
                             take_remote: true,
@@ -301,9 +315,9 @@ impl SalvaeApp {
             .show(ui, |ui| {
                 for a in &self.vm.activity {
                     let color = match a.kind {
-                        ActivityKind::Info => egui::Color32::GRAY,
-                        ActivityKind::Warning => egui::Color32::YELLOW,
-                        ActivityKind::Error => egui::Color32::LIGHT_RED,
+                        ActivityKind::Info => theme::MUTED,
+                        ActivityKind::Warning => egui::Color32::from_rgb(245, 158, 11), // amber-500
+                        ActivityKind::Error => egui::Color32::from_rgb(239, 68, 68),    // red-500
                     };
                     ui.colored_label(color, &a.message);
                 }
@@ -345,19 +359,28 @@ impl eframe::App for SalvaeApp {
             });
         }
 
+        let side_frame =
+            egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
+        let central_frame =
+            egui::Frame::central_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
+
         egui::SidePanel::left("groups")
-            .default_width(240.0)
+            .default_width(264.0)
+            .frame(side_frame)
             .show(ctx, |ui| {
                 self.groups_panel(ui);
             });
         egui::TopBottomPanel::bottom("activity")
-            .default_height(140.0)
+            .default_height(150.0)
+            .frame(side_frame)
             .show(ctx, |ui| {
                 self.activity_panel(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.games_panel(ui);
-        });
+        egui::CentralPanel::default()
+            .frame(central_frame)
+            .show(ctx, |ui| {
+                self.games_panel(ui);
+            });
         self.conflict_modal(ctx);
 
         // Tray menu clicks arrive on a global channel that eframe does not

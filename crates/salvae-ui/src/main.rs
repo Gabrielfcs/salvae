@@ -11,8 +11,7 @@ use eframe::egui;
 
 use salvae_ui::agent_backend::AgentBackend;
 use salvae_ui::app::SalvaeApp;
-use salvae_ui::tray;
-use salvae_ui::worker;
+use salvae_ui::{theme, tray, worker};
 
 /// Per-user Salvaê app directory (`%AppData%\salvae`).
 fn app_dir() -> PathBuf {
@@ -46,6 +45,8 @@ fn main() -> eframe::Result<()> {
         "Salvaê",
         options,
         Box::new(move |cc| {
+            theme::apply(&cc.egui_ctx);
+
             // Spawn the worker thread, waking the UI via the egui context.
             let ctx = cc.egui_ctx.clone();
             let ev_tx_worker = ev_tx;
