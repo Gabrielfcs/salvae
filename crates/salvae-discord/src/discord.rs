@@ -12,7 +12,7 @@ use crate::retry::execute_with_retry;
 /// Discord REST API base (v10).
 pub const DISCORD_API_BASE: &str = "https://discord.com/api/v10";
 /// Discord requires a descriptive User-Agent on every request.
-const USER_AGENT: &str = "DiscordBot (https://github.com/salvae/salvae, 0.1)";
+pub(crate) const USER_AGENT: &str = "DiscordBot (https://github.com/salvae/salvae, 0.1)";
 /// Additional attempts after the first when rate-limited.
 const MAX_RETRIES: u32 = 5;
 
