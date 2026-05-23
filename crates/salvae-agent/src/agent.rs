@@ -66,6 +66,21 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         save_state(rt)?;
         Ok(AgentOutcome::Opened { pull, others_playing })
     }
+
+    /// Handle a game closing: remove our "playing" marker and push the local
+    /// save (which may surface a conflict for the UI to resolve).
+    pub fn handle_close(&mut self, game_id: &str, now_ms: u64) -> Result<AgentOutcome, AgentError> {
+        let Some((rt, folder)) = self.resolve(game_id) else {
+            return Ok(AgentOutcome::NotConfigured);
+        };
+        rt.engine.end_playing(game_id)?;
+        if !folder.exists() {
+            return Ok(AgentOutcome::NoFolder);
+        }
+        let push = rt.engine.push(game_id, &folder, now_ms)?;
+        save_state(rt)?;
+        Ok(AgentOutcome::Closed { push })
+    }
 }
 
 /// Persist a group's current sync state to its state file.
@@ -198,5 +213,63 @@ mod tests {
             vec![],
         );
         assert_eq!(agent.handle_open("steam:999", 100).unwrap(), AgentOutcome::NotConfigured);
+    }
+
+    #[test]
+    fn close_pushes_the_local_save() {
+        use salvae_sync::engine::PushOutcome;
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+        write(&folder, "world.db", b"my progress");
+
+        let mut agent = agent_for(
+            InMemoryChannel::new(),
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+
+        let outcome = agent.handle_close("steam:1", 200).unwrap();
+        assert!(matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Pushed(v) } if v.number == 1));
+        assert!(dir.path().join("state.json").exists());
+    }
+
+    #[test]
+    fn close_with_missing_folder_is_no_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut agent = agent_for(
+            InMemoryChannel::new(),
+            &dir.path().join("save"), // never created
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+        assert_eq!(agent.handle_close("steam:1", 200).unwrap(), AgentOutcome::NoFolder);
+    }
+
+    #[test]
+    fn close_surfaces_conflict_without_overwriting() {
+        use salvae_sync::engine::PushOutcome;
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+        write(&folder, "world.db", b"my diverged progress");
+
+        // Remote already has v1 (from someone else); we never pulled it, and our
+        // content differs -> push must report a conflict.
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"someone elses progress");
+
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+        let outcome = agent.handle_close("steam:1", 200).unwrap();
+        assert!(matches!(outcome, AgentOutcome::Closed { push: PushOutcome::Conflict { remote } } if remote.number == 1));
     }
 }
