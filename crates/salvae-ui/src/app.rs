@@ -97,10 +97,10 @@ impl SalvaeApp {
     }
 
     fn groups_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Groups");
+        ui.heading("Grupos");
         ui.add_space(4.0);
         if self.vm.groups.is_empty() {
-            ui.label(egui::RichText::new("No groups yet.").color(theme::MUTED));
+            ui.label(egui::RichText::new("Nenhum grupo ainda.").color(theme::MUTED));
         }
         for g in &self.vm.groups {
             let selected = self.forms.selected_group.as_deref() == Some(&g.id);
@@ -111,11 +111,11 @@ impl SalvaeApp {
 
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if theme::primary_button(ui, "+ Create group").clicked() {
+            if theme::primary_button(ui, "+ Criar grupo").clicked() {
                 self.reset_create_form();
                 self.forms.show_create = true;
             }
-            if ui.button("Join group").clicked() {
+            if ui.button("Entrar em grupo").clicked() {
                 self.forms.join_password.clear();
                 self.forms.join_invite.clear();
                 self.forms.show_join = true;
@@ -125,11 +125,11 @@ impl SalvaeApp {
         if let Some(invite) = self.vm.last_invite.clone() {
             ui.separator();
             ui.label(
-                egui::RichText::new("Invite to share (send the password out-of-band):")
+                egui::RichText::new("Convite para compartilhar (envie a senha por fora):")
                     .color(theme::MUTED),
             );
             ui.add(egui::TextEdit::multiline(&mut invite.clone()).desired_rows(2));
-            if ui.button("Copy invite").clicked() {
+            if ui.button("Copiar convite").clicked() {
                 ui.output_mut(|o| o.copied_text = invite);
             }
         }
@@ -158,7 +158,7 @@ impl SalvaeApp {
             return;
         }
         let mut open = true;
-        egui::Window::new("Create group")
+        egui::Window::new("Criar grupo")
             .collapsible(false)
             .resizable(false)
             .order(egui::Order::Foreground)
@@ -181,28 +181,28 @@ impl SalvaeApp {
 
     /// Step 1: create the bot in the Discord Developer Portal.
     fn wizard_step_bot(&mut self, ui: &mut egui::Ui) {
-        wizard_header(ui, "Create your Discord bot", 1);
+        wizard_header(ui, "Crie seu bot do Discord", 1);
         ui.label(
-            "Salvaê keeps your saves in a private Discord channel, accessed by a bot. \
-             You only set this up once per group.",
+            "O Salvaê guarda seus saves em um canal privado do Discord, acessado por um bot. \
+             Você configura isso só uma vez por grupo.",
         );
         ui.add_space(8.0);
         ui.hyperlink_to(
-            "Open the Discord Developer Portal ↗",
+            "Abrir o Portal de Desenvolvedores do Discord ↗",
             "https://discord.com/developers/applications",
         );
         ui.add_space(8.0);
         for line in [
-            "1. New Application → give it a name (e.g. \"Salvaê\").",
-            "2. Open the Bot tab → Reset Token → Copy.",
-            "3. Keep the token secret — it's the group's key to the channel.",
+            "1. New Application → dê um nome (ex.: \"Salvaê\").",
+            "2. Abra a aba Bot → Reset Token → Copy.",
+            "3. Mantenha o token em segredo — é a chave do grupo para o canal.",
         ] {
             ui.label(egui::RichText::new(line).color(theme::MUTED));
         }
         ui.add_space(10.0);
         ui.separator();
         ui.horizontal(|ui| {
-            if theme::primary_button(ui, "Next").clicked() {
+            if theme::primary_button(ui, "Avançar").clicked() {
                 self.forms.create_step = 1;
             }
         });
@@ -210,8 +210,8 @@ impl SalvaeApp {
 
     /// Step 2: paste + validate the bot token.
     fn wizard_step_token(&mut self, ui: &mut egui::Ui) {
-        wizard_header(ui, "Paste the bot token", 2);
-        ui.label("Bot token");
+        wizard_header(ui, "Cole o token do bot", 2);
+        ui.label("Token do bot");
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.forms.new_token)
@@ -219,7 +219,7 @@ impl SalvaeApp {
                     .desired_width(300.0),
             );
             let token = self.forms.new_token.trim().to_string();
-            if ui.button("Validate").clicked() && !token.is_empty() {
+            if ui.button("Validar").clicked() && !token.is_empty() {
                 self.vm.token_validated = false;
                 self.send(Command::ValidateToken { token });
             }
@@ -227,18 +227,18 @@ impl SalvaeApp {
         if self.vm.token_validated {
             if let Some(name) = self.vm.bot_name.clone() {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new(format!("✓ Connected as {name}")).color(GREEN));
+                ui.label(egui::RichText::new(format!("✓ Conectado como {name}")).color(GREEN));
             }
         }
         ui.add_space(10.0);
         ui.separator();
         let validated = self.vm.token_validated;
         ui.horizontal(|ui| {
-            if ui.button("Back").clicked() {
+            if ui.button("Voltar").clicked() {
                 self.forms.create_step = 0;
             }
             ui.add_enabled_ui(validated, |ui| {
-                if theme::primary_button(ui, "Next").clicked() {
+                if theme::primary_button(ui, "Avançar").clicked() {
                     self.forms.create_step = 2;
                 }
             });
@@ -247,22 +247,22 @@ impl SalvaeApp {
 
     /// Step 3: invite the bot to a server, then pick the server + channel.
     fn wizard_step_channel(&mut self, ui: &mut egui::Ui) {
-        wizard_header(ui, "Add the bot & choose the channel", 3);
+        wizard_header(ui, "Adicione o bot e escolha o canal", 3);
         if let Some(bot_id) = self.vm.bot_id {
             let url = bot_invite_url(bot_id);
-            ui.hyperlink_to("Add the bot to your server ↗", &url);
-            if ui.button("Copy invite link").clicked() {
+            ui.hyperlink_to("Adicionar o bot ao seu servidor ↗", &url);
+            if ui.button("Copiar link de convite").clicked() {
                 ui.output_mut(|o| o.copied_text = url);
             }
         }
         ui.label(
-            egui::RichText::new("After authorizing in the browser, click Find servers.")
+            egui::RichText::new("Depois de autorizar no navegador, clique em Buscar servidores.")
                 .color(theme::MUTED)
                 .small(),
         );
         ui.add_space(6.0);
         let token = self.forms.new_token.trim().to_string();
-        if ui.button("Find servers").clicked() && !token.is_empty() {
+        if ui.button("Buscar servidores").clicked() && !token.is_empty() {
             self.forms.create_guild = None;
             self.forms.create_channel = None;
             self.vm.guilds_loaded = false;
@@ -275,7 +275,7 @@ impl SalvaeApp {
             if self.vm.discovered_guilds.is_empty() {
                 ui.label(
                     egui::RichText::new(
-                        "Token OK, but the bot isn't in any server yet. Add it, then retry.",
+                        "Token OK, mas o bot ainda não está em nenhum servidor. Adicione-o e tente de novo.",
                     )
                     .color(theme::MUTED),
                 );
@@ -287,11 +287,11 @@ impl SalvaeApp {
         ui.separator();
         let ready = self.forms.create_channel.is_some();
         ui.horizontal(|ui| {
-            if ui.button("Back").clicked() {
+            if ui.button("Voltar").clicked() {
                 self.forms.create_step = 1;
             }
             ui.add_enabled_ui(ready, |ui| {
-                if theme::primary_button(ui, "Next").clicked() {
+                if theme::primary_button(ui, "Avançar").clicked() {
                     self.forms.create_step = 3;
                 }
             });
@@ -300,18 +300,16 @@ impl SalvaeApp {
 
     /// Step 4: name the group + set the shared password, then create.
     fn wizard_step_name(&mut self, ui: &mut egui::Ui) {
-        wizard_header(ui, "Name your group", 4);
-        ui.label("Group name");
+        wizard_header(ui, "Dê um nome ao grupo", 4);
+        ui.label("Nome do grupo");
         ui.text_edit_singleline(&mut self.forms.new_name);
         ui.add_space(4.0);
-        ui.label("Shared password");
+        ui.label("Senha compartilhada");
         ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
         ui.label(
-            egui::RichText::new(
-                "Everyone in the group types this same password (share it out-of-band).",
-            )
-            .color(theme::MUTED)
-            .small(),
+            egui::RichText::new("Todos no grupo digitam essa mesma senha (combine-a por fora).")
+                .color(theme::MUTED)
+                .small(),
         );
         ui.add_space(10.0);
         ui.separator();
@@ -320,11 +318,11 @@ impl SalvaeApp {
             && self.forms.create_guild.is_some()
             && self.forms.create_channel.is_some();
         ui.horizontal(|ui| {
-            if ui.button("Back").clicked() {
+            if ui.button("Voltar").clicked() {
                 self.forms.create_step = 2;
             }
             ui.add_enabled_ui(ready, |ui| {
-                if theme::primary_button(ui, "Create group").clicked() {
+                if theme::primary_button(ui, "Criar grupo").clicked() {
                     self.send(Command::CreateGroup {
                         name: self.forms.new_name.clone(),
                         password: self.forms.new_password.clone(),
@@ -342,13 +340,13 @@ impl SalvaeApp {
     fn channel_pickers_ui(&mut self, ui: &mut egui::Ui) {
         let guilds = self.vm.discovered_guilds.clone();
         let token = self.forms.new_token.trim().to_string();
-        ui.label("Server");
+        ui.label("Servidor");
         let prev_guild = self.forms.create_guild;
         egui::ComboBox::from_id_salt("create_guild")
             .selected_text(label_for(
                 &guilds,
                 self.forms.create_guild,
-                "Select a server",
+                "Selecione um servidor",
             ))
             .show_ui(ui, |ui| {
                 for g in &guilds {
@@ -367,12 +365,12 @@ impl SalvaeApp {
         if self.forms.create_guild.is_some() {
             let channels = self.vm.discovered_channels.clone();
             ui.add_space(4.0);
-            ui.label("Channel");
+            ui.label("Canal");
             egui::ComboBox::from_id_salt("create_channel")
                 .selected_text(label_for(
                     &channels,
                     self.forms.create_channel,
-                    "Select a channel",
+                    "Selecione um canal",
                 ))
                 .show_ui(ui, |ui| {
                     for c in &channels {
@@ -392,7 +390,7 @@ impl SalvaeApp {
             return;
         }
         let mut open = true;
-        egui::Window::new("Join group")
+        egui::Window::new("Entrar em grupo")
             .collapsible(false)
             .resizable(false)
             .order(egui::Order::Foreground)
@@ -400,16 +398,16 @@ impl SalvaeApp {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.set_min_width(360.0);
-                ui.label("Invite");
+                ui.label("Convite");
                 ui.add(egui::TextEdit::multiline(&mut self.forms.join_invite).desired_rows(3));
                 ui.add_space(4.0);
-                ui.label("Shared password");
+                ui.label("Senha compartilhada");
                 ui.add(egui::TextEdit::singleline(&mut self.forms.join_password).password(true));
                 ui.add_space(8.0);
                 let ready = !self.forms.join_invite.trim().is_empty()
                     && !self.forms.join_password.is_empty();
                 ui.add_enabled_ui(ready, |ui| {
-                    if theme::primary_button(ui, "Join group").clicked() {
+                    if theme::primary_button(ui, "Entrar em grupo").clicked() {
                         self.send(Command::JoinGroup {
                             password: self.forms.join_password.clone(),
                             invite: self.forms.join_invite.clone(),
@@ -425,15 +423,15 @@ impl SalvaeApp {
 
     fn games_panel(&mut self, ui: &mut egui::Ui) {
         let Some(group_id) = self.forms.selected_group.clone() else {
-            ui.label("Select a group on the left.");
+            ui.label("Selecione um grupo à esquerda.");
             return;
         };
         let Some(group) = self.vm.groups.iter().find(|g| g.id == group_id).cloned() else {
             return;
         };
 
-        ui.heading(format!("{} — games", group.name));
-        if ui.button("Remove this group").clicked() {
+        ui.heading(format!("{} — jogos", group.name));
+        if ui.button("Remover este grupo").clicked() {
             self.send(Command::RemoveGroup {
                 group_id: group_id.clone(),
             });
@@ -453,17 +451,19 @@ impl SalvaeApp {
                     match mapping {
                         Some(m) => {
                             ui.label(
-                                egui::RichText::new(format!("Folder: {}", m.folder))
+                                egui::RichText::new(format!("Pasta: {}", m.folder))
                                     .color(theme::MUTED),
                             );
                         }
                         None => {
-                            ui.label(egui::RichText::new("Folder: not set").color(theme::MUTED));
+                            ui.label(
+                                egui::RichText::new("Pasta: não definida").color(theme::MUTED),
+                            );
                         }
                     }
 
                     ui.horizontal(|ui| {
-                        if ui.button("Choose folder…").clicked() {
+                        if ui.button("Escolher pasta…").clicked() {
                             if let Some(path) = rfd::FileDialog::new().pick_folder() {
                                 self.send(Command::SetGamePath {
                                     group_id: group_id.clone(),
@@ -473,21 +473,21 @@ impl SalvaeApp {
                             }
                         }
                         if self.vm.scan_armed.contains(&game.id) {
-                            if ui.button("I've closed the game — find save").clicked() {
+                            if ui.button("Fechei o jogo — encontrar save").clicked() {
                                 self.send(Command::CollectScan {
                                     game_id: game.id.clone(),
                                 });
                             }
                             ui.label(
-                                egui::RichText::new("scan armed — launch & close the game")
+                                egui::RichText::new("varredura armada — abra e feche o jogo")
                                     .color(theme::MUTED),
                             );
-                        } else if ui.button("Auto-find save (scan)").clicked() {
+                        } else if ui.button("Encontrar save automaticamente").clicked() {
                             self.send(Command::ArmScan {
                                 game_id: game.id.clone(),
                             });
                         }
-                        if ui.button("History").clicked() {
+                        if ui.button("Histórico").clicked() {
                             self.send(Command::LoadHistory {
                                 game_id: game.id.clone(),
                             });
@@ -496,15 +496,15 @@ impl SalvaeApp {
 
                     if let Some(cands) = self.vm.scan_results.get(&game.id) {
                         ui.add_space(4.0);
-                        ui.strong("Candidate save folders");
+                        ui.strong("Pastas candidatas a save");
                         for c in cands {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
-                                    "{} ({} files changed)",
+                                    "{} ({} arquivos alterados)",
                                     c.folder.display(),
                                     c.changed_files
                                 ));
-                                if ui.button("Use this").clicked() {
+                                if ui.button("Usar esta").clicked() {
                                     self.send(Command::SetGamePath {
                                         group_id: group_id.clone(),
                                         game_id: game.id.clone(),
@@ -517,7 +517,7 @@ impl SalvaeApp {
 
                     if let Some(versions) = self.vm.history.get(&game.id) {
                         ui.add_space(4.0);
-                        ui.strong("Versions");
+                        ui.strong("Versões");
                         for v in versions.iter().rev() {
                             ui.horizontal(|ui| {
                                 ui.label(format!(
@@ -526,7 +526,7 @@ impl SalvaeApp {
                                     v.author,
                                     human_size(v.size)
                                 ));
-                                if ui.button("Restore").clicked() {
+                                if ui.button("Restaurar").clicked() {
                                     self.send(Command::Restore {
                                         game_id: game.id.clone(),
                                         version: v.number,
@@ -545,29 +545,29 @@ impl SalvaeApp {
         let Some(conflict) = self.vm.pending_conflicts.first().cloned() else {
             return;
         };
-        egui::Window::new("Save conflict")
+        egui::Window::new("Conflito de save")
             .collapsible(false)
             .resizable(false)
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 ui.label(format!(
-                    "A newer save exists for {} (version {} by {}).",
+                    "Existe um save mais novo para {} (versão {} por {}).",
                     conflict.game_id, conflict.remote.number, conflict.remote.author
                 ));
                 ui.label(
-                    egui::RichText::new("Overwriting it may lose progress.")
+                    egui::RichText::new("Sobrescrever pode perder progresso.")
                         .color(egui::Color32::from_rgb(245, 158, 11)),
                 );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    if theme::primary_button(ui, "Keep the newer remote save").clicked() {
+                    if theme::primary_button(ui, "Manter o save remoto mais novo").clicked() {
                         self.send(Command::Resolve {
                             game_id: conflict.game_id.clone(),
                             take_remote: true,
                         });
                     }
-                    if ui.button("Upload mine as a new version").clicked() {
+                    if ui.button("Enviar o meu como nova versão").clicked() {
                         self.send(Command::Resolve {
                             game_id: conflict.game_id.clone(),
                             take_remote: false,
@@ -578,7 +578,7 @@ impl SalvaeApp {
     }
 
     fn activity_panel(&self, ui: &mut egui::Ui) {
-        ui.heading("Activity");
+        ui.heading("Atividade");
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
             .show(ui, |ui| {
@@ -630,7 +630,7 @@ fn bot_invite_url(bot_id: u64) -> String {
 fn wizard_header(ui: &mut egui::Ui, title: &str, step: u8) {
     ui.heading(title);
     ui.label(
-        egui::RichText::new(format!("Step {step} of 4"))
+        egui::RichText::new(format!("Passo {step} de 4"))
             .color(theme::MUTED)
             .small(),
     );
@@ -698,7 +698,7 @@ impl eframe::App for SalvaeApp {
             egui::TopBottomPanel::top("error").show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.colored_label(egui::Color32::LIGHT_RED, format!("⚠ {err}"));
-                    if ui.button("Dismiss").clicked() {
+                    if ui.button("Dispensar").clicked() {
                         self.vm.last_error = None;
                     }
                 });

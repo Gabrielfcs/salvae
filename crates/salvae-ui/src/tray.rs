@@ -24,8 +24,8 @@ fn solid_icon() -> Icon {
 /// Create the tray icon + menu. Call on the main thread (after the event loop
 /// starts on Windows — i.e., from the eframe creation closure).
 pub fn build() -> Result<Tray, String> {
-    let open = MenuItem::new("Open Salvaê", true, None);
-    let quit = MenuItem::new("Quit", true, None);
+    let open = MenuItem::new("Abrir Salvaê", true, None);
+    let quit = MenuItem::new("Sair", true, None);
     let menu = Menu::new();
     menu.append(&open).map_err(|e| e.to_string())?;
     menu.append(&quit).map_err(|e| e.to_string())?;

@@ -57,7 +57,9 @@ impl ViewModel {
             Event::DiscoveredChannels(c) => self.discovered_channels = c,
             Event::Invite(s) => {
                 self.last_invite = Some(s);
-                self.push_activity(ActivityView::info("Group created — share the invite below"));
+                self.push_activity(ActivityView::info(
+                    "Grupo criado — compartilhe o convite abaixo",
+                ));
             }
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);

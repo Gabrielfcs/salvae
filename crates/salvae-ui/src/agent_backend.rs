@@ -276,7 +276,7 @@ impl Backend for AgentBackend {
         let armed = self
             .armed
             .remove(game_id)
-            .ok_or_else(|| format!("no scan armed for {game_id}"))?;
+            .ok_or_else(|| format!("nenhuma varredura armada para {game_id}"))?;
         let name = self.game_name(game_id);
         discovery::collect(&armed, &name).map_err(|e| e.to_string())
     }
@@ -309,7 +309,7 @@ impl Backend for AgentBackend {
         let now = now_ms();
         let results = match self.agent.tick(now) {
             Ok(r) => r,
-            Err(e) => return vec![Event::Error(format!("sync tick failed: {e}"))],
+            Err(e) => return vec![Event::Error(format!("falha na sincronização: {e}"))],
         };
         let mut events = Vec::new();
         for (game_event, outcome) in results {
@@ -323,11 +323,11 @@ impl Backend for AgentBackend {
                     others_playing,
                 } => {
                     events.push(Event::Activity(ActivityView::info(format!(
-                        "{name} opened — pulled latest ({pull:?})"
+                        "{name} aberto — baixou a versão mais recente ({pull:?})"
                     ))));
                     if !others_playing.is_empty() {
                         events.push(Event::Activity(ActivityView::warning(format!(
-                            "Also playing {name} now: {}",
+                            "Também jogando {name} agora: {}",
                             others_playing.join(", ")
                         ))));
                     }
@@ -338,18 +338,21 @@ impl Backend for AgentBackend {
                         remote: to_version_view(&remote),
                     }),
                     PushOutcome::Pushed(v) => events.push(Event::Activity(ActivityView::info(
-                        format!("{name} closed — pushed version {}", v.number),
+                        format!("{name} fechado — enviou a versão {}", v.number),
                     ))),
                     PushOutcome::NoChange(n) => events.push(Event::Activity(ActivityView::info(
-                        format!("{name} closed — already up to date (v{n})"),
+                        format!("{name} fechado — já está atualizado (v{n})"),
                     ))),
                 },
-                AgentOutcome::Restored { version } => events.push(Event::Activity(
-                    ActivityView::info(format!("{name} restored to version {}", version.number)),
-                )),
+                AgentOutcome::Restored { version } => {
+                    events.push(Event::Activity(ActivityView::info(format!(
+                        "{name} restaurado para a versão {}",
+                        version.number
+                    ))))
+                }
                 AgentOutcome::NotConfigured => {}
                 AgentOutcome::NoFolder => events.push(Event::Activity(ActivityView::warning(
-                    format!("{name} closed but its save folder is missing"),
+                    format!("{name} fechado, mas a pasta de save não existe"),
                 ))),
             }
         }

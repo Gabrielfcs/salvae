@@ -45,7 +45,7 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
         }
         Command::JoinGroup { password, invite } => match backend.join_group(&password, &invite) {
             Ok(()) => vec![
-                Event::Activity(ActivityView::info("Joined group")),
+                Event::Activity(ActivityView::info("Entrou no grupo")),
                 Event::Groups(backend.refresh_groups()),
             ],
             Err(e) => vec![Event::Error(e)],
@@ -60,7 +60,7 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             folder,
         } => match backend.set_game_path(&group_id, &game_id, &folder) {
             Ok(()) => vec![
-                Event::Activity(ActivityView::info(format!("Set folder for {game_id}"))),
+                Event::Activity(ActivityView::info(format!("Pasta definida para {game_id}"))),
                 Event::Groups(backend.refresh_groups()),
             ],
             Err(e) => vec![Event::Error(e)],
@@ -82,7 +82,7 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
         },
         Command::Restore { game_id, version } => match backend.restore(&game_id, version) {
             Ok(()) => vec![Event::Activity(ActivityView::info(format!(
-                "Restored {game_id} to version {version}"
+                "{game_id} restaurado para a versão {version}"
             )))],
             Err(e) => vec![Event::Error(e)],
         },
@@ -92,7 +92,7 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
         } => match backend.resolve(&game_id, take_remote) {
             Ok(()) => vec![
                 Event::Activity(ActivityView::info(format!(
-                    "Resolved conflict for {game_id}"
+                    "Conflito resolvido para {game_id}"
                 ))),
                 Event::ResolvedConflict { game_id },
             ],
