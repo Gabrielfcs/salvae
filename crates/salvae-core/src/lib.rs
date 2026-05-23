@@ -2,13 +2,13 @@
 //!
 //! No OS or network dependencies — fully unit-testable.
 
-pub mod kdf;
+pub mod chunk;
 pub mod cipher;
 pub mod compress;
-pub mod chunk;
 pub mod hash;
-pub mod version;
+pub mod kdf;
 pub mod seal;
+pub mod version;
 
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +39,9 @@ mod error_tests {
             CoreError::Decrypt.to_string(),
             "decryption failed (wrong password or corrupted data)"
         );
-        assert_eq!(CoreError::Kdf("boom".into()).to_string(), "key derivation failed: boom");
+        assert_eq!(
+            CoreError::Kdf("boom".into()).to_string(),
+            "key derivation failed: boom"
+        );
     }
 }

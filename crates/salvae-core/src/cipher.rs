@@ -14,7 +14,9 @@ pub fn encrypt(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, CoreError> {
     let mut nonce_bytes = [0u8; NONCE_LEN];
     getrandom::getrandom(&mut nonce_bytes).map_err(|_| CoreError::Encrypt)?;
     let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, plaintext).map_err(|_| CoreError::Encrypt)?;
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|_| CoreError::Encrypt)?;
     let mut out = Vec::with_capacity(NONCE_LEN + ciphertext.len());
     out.extend_from_slice(&nonce_bytes);
     out.extend_from_slice(&ciphertext);
@@ -29,7 +31,9 @@ pub fn decrypt(key: &[u8; 32], data: &[u8]) -> Result<Vec<u8>, CoreError> {
     let (nonce_bytes, ciphertext) = data.split_at(NONCE_LEN);
     let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
     let nonce = Nonce::from_slice(nonce_bytes);
-    cipher.decrypt(nonce, ciphertext).map_err(|_| CoreError::Decrypt)
+    cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| CoreError::Decrypt)
 }
 
 #[cfg(test)]
@@ -80,6 +84,9 @@ mod tests {
 
     #[test]
     fn too_short_input_fails_to_decrypt() {
-        assert!(matches!(decrypt(&[0u8; 32], &[0u8; 4]), Err(CoreError::Decrypt)));
+        assert!(matches!(
+            decrypt(&[0u8; 32], &[0u8; 4]),
+            Err(CoreError::Decrypt)
+        ));
     }
 }

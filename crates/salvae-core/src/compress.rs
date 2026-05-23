@@ -42,6 +42,9 @@ mod tests {
 
     #[test]
     fn garbage_fails_to_decompress() {
-        assert!(matches!(decompress(&[1, 2, 3, 4]), Err(CoreError::Decompress(_))));
+        assert!(matches!(
+            decompress(&[1, 2, 3, 4]),
+            Err(CoreError::Decompress(_))
+        ));
     }
 }
