@@ -1004,6 +1004,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "salvae-detect"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "salvae-discord"
 version = "0.1.0"
 dependencies = [
