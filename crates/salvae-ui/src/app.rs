@@ -467,21 +467,22 @@ impl SalvaeApp {
     }
 }
 
-/// Paint a full-window dim layer that swallows input, so the panels behind an
-/// open dialog can't be interacted with (egui 0.29 has no built-in modal). The
-/// dialog windows are drawn afterwards on the same foreground order, so they
-/// sit above this shield.
-fn modal_shield(ctx: &egui::Context) {
+/// Paint a full-window dim layer behind an open dialog so the panels can't be
+/// interacted with (egui 0.29 has no built-in modal). Sits on `Middle` order —
+/// strictly below the dialog windows (`Foreground`) so it never covers them.
+/// Returns `true` if the backdrop itself was clicked (dismiss the dialog).
+fn modal_shield(ctx: &egui::Context) -> bool {
     let screen = ctx.screen_rect();
     egui::Area::new(egui::Id::new("modal_shield"))
-        .order(egui::Order::Foreground)
+        .order(egui::Order::Middle)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             ui.painter()
                 .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(160));
-            // Consume any click/drag so it never reaches the panels below.
-            ui.allocate_rect(screen, egui::Sense::click_and_drag());
-        });
+            // Swallow input meant for the panels; report a click for dismissal.
+            ui.allocate_rect(screen, egui::Sense::click()).clicked()
+        })
+        .inner
 }
 
 /// A picker item with a numeric id and a display name (server or channel).
@@ -577,11 +578,12 @@ impl eframe::App for SalvaeApp {
                 self.games_panel(ui);
             });
 
-        // Dim + block the panels behind any open dialog.
-        let modal_open =
-            self.forms.show_create || self.forms.show_join || !self.vm.pending_conflicts.is_empty();
-        if modal_open {
-            modal_shield(ctx);
+        // Dim + block the panels behind the create/join dialogs; a click on the
+        // backdrop dismisses them. (The conflict prompt requires an explicit
+        // choice, so it has no dismissable backdrop.)
+        if (self.forms.show_create || self.forms.show_join) && modal_shield(ctx) {
+            self.forms.show_create = false;
+            self.forms.show_join = false;
         }
         self.create_modal(ctx);
         self.join_modal(ctx);
