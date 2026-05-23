@@ -3,6 +3,7 @@
 //! No OS or network dependencies — fully unit-testable.
 
 pub mod kdf;
+pub mod cipher;
 
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
