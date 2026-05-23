@@ -98,6 +98,10 @@ pub fn enumerate(steam_root: &Path) -> Result<Vec<InstalledGame>, DetectError> {
     for lib in &libraries {
         games.extend(games_in_library(lib)?);
     }
+    // A library can appear both as `steam_root` and in libraryfolders.vdf
+    // (possibly with different path normalization); dedup by stable id.
+    let mut seen = std::collections::HashSet::new();
+    games.retain(|g| seen.insert(g.id.clone()));
     Ok(games)
 }
 
