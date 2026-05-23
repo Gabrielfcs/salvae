@@ -1016,6 +1016,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "salvae-sync"
+version = "0.1.0"
+dependencies = [
+ "salvae-core",
+ "salvae-vault",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "salvae-vault"
 version = "0.1.0"
 dependencies = [
