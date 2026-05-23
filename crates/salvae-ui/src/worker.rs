@@ -29,6 +29,16 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             ],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::FetchGuilds { token } => match backend.fetch_guilds(&token) {
+            Ok(guilds) => vec![Event::DiscoveredGuilds(guilds)],
+            Err(e) => vec![Event::Error(e)],
+        },
+        Command::FetchChannels { token, guild_id } => {
+            match backend.fetch_channels(&token, guild_id) {
+                Ok(channels) => vec![Event::DiscoveredChannels(channels)],
+                Err(e) => vec![Event::Error(e)],
+            }
+        }
         Command::JoinGroup { password, invite } => match backend.join_group(&password, &invite) {
             Ok(()) => vec![
                 Event::Activity(ActivityView::info("Joined group")),
@@ -122,7 +132,9 @@ pub fn run<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::{DiscoveredCandidate, GameView, GroupView, VersionView};
+    use crate::view::{
+        ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView,
+    };
 
     /// A scripted fake backend recording calls and returning canned results.
     #[derive(Default)]
@@ -130,6 +142,7 @@ mod tests {
         groups: Vec<GroupView>,
         create_result: Option<Result<String, String>>,
         history_result: Vec<VersionView>,
+        guilds_result: Vec<GuildView>,
         resolved: Vec<String>,
         tick_events: Vec<Event>,
     }
@@ -155,6 +168,15 @@ mod tests {
             self.create_result
                 .clone()
                 .unwrap_or_else(|| Ok("invite-blob".into()))
+        }
+        fn fetch_guilds(&self, _: &str) -> Result<Vec<GuildView>, String> {
+            Ok(self.guilds_result.clone())
+        }
+        fn fetch_channels(&self, _: &str, _: u64) -> Result<Vec<ChannelView>, String> {
+            Ok(vec![ChannelView {
+                id: 10,
+                name: "saves".into(),
+            }])
         }
         fn join_group(&mut self, _: &str, _: &str) -> Result<(), String> {
             Ok(())
@@ -236,6 +258,43 @@ mod tests {
         assert!(events.contains(&Event::ResolvedConflict {
             game_id: "steam:1".into()
         }));
+    }
+
+    #[test]
+    fn fetch_guilds_emits_discovered_guilds() {
+        let mut b = FakeBackend {
+            guilds_result: vec![GuildView {
+                id: 7,
+                name: "Crew".into(),
+            }],
+            ..Default::default()
+        };
+        let events = dispatch(
+            &mut b,
+            Command::FetchGuilds {
+                token: "tok".into(),
+            },
+        );
+        assert_eq!(
+            events,
+            vec![Event::DiscoveredGuilds(vec![GuildView {
+                id: 7,
+                name: "Crew".into()
+            }])]
+        );
+    }
+
+    #[test]
+    fn fetch_channels_emits_discovered_channels() {
+        let mut b = FakeBackend::default();
+        let events = dispatch(
+            &mut b,
+            Command::FetchChannels {
+                token: "tok".into(),
+                guild_id: 7,
+            },
+        );
+        assert!(matches!(&events[0], Event::DiscoveredChannels(c) if c[0].id == 10));
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! Messages between the UI thread and the background worker.
 
-use crate::view::{ActivityView, DiscoveredCandidate, GameView, GroupView, VersionView};
+use crate::view::{
+    ActivityView, ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView,
+};
 
 /// A request from the UI thread to the worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -13,6 +15,15 @@ pub enum Command {
         token: String,
         guild_id: u64,
         channel_id: u64,
+    },
+    /// List the servers the bot token can see (create-group picker).
+    FetchGuilds {
+        token: String,
+    },
+    /// List a server's text channels (create-group picker).
+    FetchChannels {
+        token: String,
+        guild_id: u64,
     },
     JoinGroup {
         password: String,
@@ -54,6 +65,10 @@ pub enum Command {
 pub enum Event {
     Groups(Vec<GroupView>),
     InstalledGames(Vec<GameView>),
+    /// Servers the bot can see (response to `FetchGuilds`).
+    DiscoveredGuilds(Vec<GuildView>),
+    /// Text channels of the selected server (response to `FetchChannels`).
+    DiscoveredChannels(Vec<ChannelView>),
     /// A freshly created group's shareable invite blob.
     Invite(String),
     History {

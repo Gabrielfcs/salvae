@@ -2,7 +2,7 @@
 //! is testable with a fake (the real impl is `AgentBackend`, Task 7).
 
 use crate::command::Event;
-use crate::view::{DiscoveredCandidate, GameView, GroupView, VersionView};
+use crate::view::{ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView};
 
 /// Everything the background worker can ask of the backend. All fallible calls
 /// return `Result<_, String>` — the error string is shown verbatim in the UI.
@@ -11,6 +11,11 @@ pub trait Backend {
     fn refresh_groups(&self) -> Vec<GroupView>;
     /// Games discovered on this machine.
     fn installed_games(&self) -> Vec<GameView>;
+
+    /// List the servers the bot `token` can see (create-group picker).
+    fn fetch_guilds(&self, token: &str) -> Result<Vec<GuildView>, String>;
+    /// List a server's text channels (create-group picker).
+    fn fetch_channels(&self, token: &str, guild_id: u64) -> Result<Vec<ChannelView>, String>;
 
     fn create_group(
         &mut self,

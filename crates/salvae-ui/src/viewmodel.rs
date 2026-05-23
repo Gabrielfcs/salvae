@@ -4,7 +4,10 @@
 use std::collections::BTreeMap;
 
 use crate::command::Event;
-use crate::view::{ActivityView, Conflict, DiscoveredCandidate, GameView, GroupView, VersionView};
+use crate::view::{
+    ActivityView, ChannelView, Conflict, DiscoveredCandidate, GameView, GroupView, GuildView,
+    VersionView,
+};
 
 /// Maximum activity-log lines kept in memory.
 const ACTIVITY_CAP: usize = 200;
@@ -14,6 +17,10 @@ const ACTIVITY_CAP: usize = 200;
 pub struct ViewModel {
     pub groups: Vec<GroupView>,
     pub installed_games: Vec<GameView>,
+    /// Servers the bot can see, for the create-group picker.
+    pub discovered_guilds: Vec<GuildView>,
+    /// Channels of the picked server, for the create-group picker.
+    pub discovered_channels: Vec<ChannelView>,
     pub history: BTreeMap<String, Vec<VersionView>>,
     pub scan_armed: Vec<String>,
     pub scan_results: BTreeMap<String, Vec<DiscoveredCandidate>>,
@@ -29,6 +36,11 @@ impl ViewModel {
         match event {
             Event::Groups(g) => self.groups = g,
             Event::InstalledGames(g) => self.installed_games = g,
+            Event::DiscoveredGuilds(g) => {
+                self.discovered_guilds = g;
+                self.discovered_channels.clear();
+            }
+            Event::DiscoveredChannels(c) => self.discovered_channels = c,
             Event::Invite(s) => {
                 self.last_invite = Some(s);
                 self.push_activity(ActivityView::info("Group created — share the invite below"));
@@ -131,6 +143,29 @@ mod tests {
         });
         assert!(vm.scan_armed.is_empty());
         assert!(vm.scan_results.contains_key("steam:1"));
+    }
+
+    #[test]
+    fn discovered_guilds_replace_and_clear_channels() {
+        use crate::view::{ChannelView, GuildView};
+        let mut vm = ViewModel::default();
+        vm.apply(Event::DiscoveredChannels(vec![ChannelView {
+            id: 1,
+            name: "old".into(),
+        }]));
+        vm.apply(Event::DiscoveredGuilds(vec![GuildView {
+            id: 9,
+            name: "Crew".into(),
+        }]));
+        assert_eq!(vm.discovered_guilds.len(), 1);
+        // Picking servers afresh clears any previously-listed channels.
+        assert!(vm.discovered_channels.is_empty());
+
+        vm.apply(Event::DiscoveredChannels(vec![ChannelView {
+            id: 2,
+            name: "saves".into(),
+        }]));
+        assert_eq!(vm.discovered_channels.len(), 1);
     }
 
     #[test]
