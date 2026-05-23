@@ -204,6 +204,73 @@ impl<C: Channel> SyncEngine<C> {
             }
         }
     }
+
+    /// Post a "currently playing" marker for `game_id` (expires after the TTL).
+    pub fn begin_playing(&self, game_id: &str, now_ms: u64) -> Result<(), SyncError> {
+        let record = PlayingRecord {
+            marker: PLAYING_MARKER.to_string(),
+            game_id: game_id.to_string(),
+            member: self.member.clone(),
+            device_id: self.device_id.clone(),
+            expires_at_ms: now_ms + PLAYING_TTL_MS,
+        };
+        self.channel.send_message(&record.to_content(), &[])?;
+        Ok(())
+    }
+
+    /// List active "playing" markers for `game_id` posted by OTHER devices.
+    pub fn who_is_playing(&self, game_id: &str, now_ms: u64) -> Result<Vec<PlayingRecord>, SyncError> {
+        let mut out = Vec::new();
+        let mut before = None;
+        loop {
+            let page = self.channel.list_messages(before, SCAN_PAGE)?;
+            if page.is_empty() {
+                break;
+            }
+            before = page.last().map(|m| m.id);
+            let full = page.len() == SCAN_PAGE as usize;
+            for msg in page {
+                if let Some(rec) = PlayingRecord::parse(&msg.content) {
+                    if rec.game_id == game_id && rec.device_id != self.device_id && rec.is_active(now_ms)
+                    {
+                        out.push(rec);
+                    }
+                }
+            }
+            if !full {
+                break;
+            }
+        }
+        Ok(out)
+    }
+
+    /// Remove this device's "playing" markers for `game_id`.
+    pub fn end_playing(&self, game_id: &str) -> Result<(), SyncError> {
+        let mut before = None;
+        loop {
+            let page = self.channel.list_messages(before, SCAN_PAGE)?;
+            if page.is_empty() {
+                break;
+            }
+            before = page.last().map(|m| m.id);
+            let full = page.len() == SCAN_PAGE as usize;
+            let mut to_delete = Vec::new();
+            for msg in &page {
+                if let Some(rec) = PlayingRecord::parse(&msg.content) {
+                    if rec.game_id == game_id && rec.device_id == self.device_id {
+                        to_delete.push(msg.id);
+                    }
+                }
+            }
+            for id in to_delete {
+                self.channel.delete_message(id)?;
+            }
+            if !full {
+                break;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Remove all entries inside `path` (but keep `path` itself).
@@ -366,5 +433,38 @@ mod tests {
         // Local now holds the remote v2 content; the old local was backed up.
         assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"friend day2");
         assert!(std::fs::read_dir(backups.path().join("valheim")).unwrap().count() >= 1);
+    }
+
+    #[test]
+    fn marker_lifecycle_across_two_members() {
+        let channel = InMemoryChannel::new();
+        let b1 = tempfile::tempdir().unwrap();
+        let b2 = tempfile::tempdir().unwrap();
+        let friend = SyncEngine::new(&channel, [4u8; 32], "friend", "dev-friend", 5, b1.path());
+        let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b2.path());
+
+        // Friend starts playing at t=1000 (marker active until 1000 + TTL).
+        friend.begin_playing("valheim", 1000).unwrap();
+
+        // I see the friend playing (and not myself).
+        let playing = me.who_is_playing("valheim", 1000).unwrap();
+        assert_eq!(playing.len(), 1);
+        assert_eq!(playing[0].member, "friend");
+
+        // After the TTL, the marker is no longer active.
+        assert!(me.who_is_playing("valheim", 1000 + PLAYING_TTL_MS).unwrap().is_empty());
+
+        // Friend stops; their marker is removed.
+        friend.end_playing("valheim").unwrap();
+        assert!(me.who_is_playing("valheim", 1000).unwrap().is_empty());
+    }
+
+    #[test]
+    fn who_is_playing_excludes_self() {
+        let channel = InMemoryChannel::new();
+        let b = tempfile::tempdir().unwrap();
+        let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b.path());
+        me.begin_playing("valheim", 1000).unwrap();
+        assert!(me.who_is_playing("valheim", 1000).unwrap().is_empty());
     }
 }
