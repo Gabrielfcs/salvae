@@ -34,9 +34,16 @@ impl<S: SecretStore> ConfigStore<S> {
                 .map_err(|e| ConfigError::Io(e.to_string()))?;
             toml::from_str(&text).map_err(|e| ConfigError::Serde(e.to_string()))?
         } else {
-            AppConfig { device_id: random_id(16), groups: Vec::new() }
+            AppConfig {
+                device_id: random_id(16),
+                groups: Vec::new(),
+            }
         };
-        Ok(Self { config_path, config, secrets })
+        Ok(Self {
+            config_path,
+            config,
+            secrets,
+        })
     }
 
     /// Write the current config to `config_path` (creating parent dirs).
@@ -73,7 +80,13 @@ impl<S: SecretStore> ConfigStore<S> {
             game_paths: Default::default(),
         };
 
-        self.secrets.set(&id, GroupSecret { token: token.to_string(), key })?;
+        self.secrets.set(
+            &id,
+            GroupSecret {
+                token: token.to_string(),
+                key,
+            },
+        )?;
         self.config.groups.push(group.clone());
         self.save()?;
 
@@ -96,8 +109,13 @@ impl<S: SecretStore> ConfigStore<S> {
             game_paths: Default::default(),
         };
 
-        self.secrets
-            .set(&id, GroupSecret { token: decoded.token, key: decoded.key })?;
+        self.secrets.set(
+            &id,
+            GroupSecret {
+                token: decoded.token,
+                key: decoded.key,
+            },
+        )?;
         self.config.groups.push(group.clone());
         self.save()?;
         Ok(group)
@@ -191,7 +209,9 @@ mod tests {
         let owner_path = dir.path().join("owner.toml");
         let mut owner =
             ConfigStore::load_or_default(&owner_path, InMemorySecretStore::new()).unwrap();
-        let (_g, invite) = owner.create_group("Crew", "pw123", "bot-token", 111, 222).unwrap();
+        let (_g, invite) = owner
+            .create_group("Crew", "pw123", "bot-token", 111, 222)
+            .unwrap();
 
         // Friend joins on another "install".
         let friend_path = dir.path().join("friend.toml");

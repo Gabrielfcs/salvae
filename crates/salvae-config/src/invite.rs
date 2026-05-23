@@ -109,14 +109,23 @@ mod tests {
     fn wrong_password_fails() {
         let salt = kdf::generate_salt();
         let invite = encode_invite("right", &salt, "Crew", "tok", 1, 2).unwrap();
-        assert!(matches!(decode_invite("wrong", &invite), Err(ConfigError::WrongPassword)));
+        assert!(matches!(
+            decode_invite("wrong", &invite),
+            Err(ConfigError::WrongPassword)
+        ));
     }
 
     #[test]
     fn garbage_invite_is_invalid() {
-        assert!(matches!(decode_invite("pw", "not base64!!!"), Err(ConfigError::Invite(_))));
+        assert!(matches!(
+            decode_invite("pw", "not base64!!!"),
+            Err(ConfigError::Invite(_))
+        ));
         // Valid base64 but too short to contain a salt.
         let short = base64::engine::general_purpose::STANDARD.encode([1u8, 2, 3]);
-        assert!(matches!(decode_invite("pw", &short), Err(ConfigError::Invite(_))));
+        assert!(matches!(
+            decode_invite("pw", &short),
+            Err(ConfigError::Invite(_))
+        ));
     }
 }

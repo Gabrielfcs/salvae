@@ -32,7 +32,9 @@ pub struct InMemorySecretStore {
 
 impl InMemorySecretStore {
     pub fn new() -> Self {
-        Self { map: HashMap::new() }
+        Self {
+            map: HashMap::new(),
+        }
     }
 }
 
@@ -57,7 +59,10 @@ mod tests {
     use super::*;
 
     fn secret() -> GroupSecret {
-        GroupSecret { token: "tok".into(), key: [7u8; KEY_LEN] }
+        GroupSecret {
+            token: "tok".into(),
+            key: [7u8; KEY_LEN],
+        }
     }
 
     #[test]

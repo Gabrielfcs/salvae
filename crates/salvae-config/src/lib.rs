@@ -41,8 +41,14 @@ mod error_tests {
 
     #[test]
     fn error_messages_are_human_readable() {
-        assert_eq!(ConfigError::WrongPassword.to_string(), "wrong password or corrupted invite");
-        assert_eq!(ConfigError::GroupNotFound("g1".into()).to_string(), "group not found: g1");
+        assert_eq!(
+            ConfigError::WrongPassword.to_string(),
+            "wrong password or corrupted invite"
+        );
+        assert_eq!(
+            ConfigError::GroupNotFound("g1".into()).to_string(),
+            "group not found: g1"
+        );
     }
 
     #[test]
