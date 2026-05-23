@@ -2,6 +2,8 @@
 //!
 //! No OS or network dependencies — fully unit-testable.
 
+pub mod kdf;
+
 /// Errors produced by salvae-core operations.
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
