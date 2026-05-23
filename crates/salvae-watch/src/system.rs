@@ -19,7 +19,8 @@ pub struct SystemProcessLister;
 
 impl ProcessLister for SystemProcessLister {
     fn list(&self) -> Result<Vec<ProcessInfo>, WatchError> {
-        // SAFETY: standard toolhelp snapshot iteration; handles are closed below.
+        // SAFETY: standard toolhelp snapshot iteration; every handle opened by
+        // the callee is closed by the callee before returning.
         unsafe { list_processes() }
     }
 }

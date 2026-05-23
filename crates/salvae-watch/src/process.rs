@@ -42,6 +42,9 @@ impl<L: ProcessLister> Watcher<L> {
     }
 
     /// List processes now and return what changed since the previous poll.
+    ///
+    /// Limitation: if the OS reuses a pid for a *different* executable between
+    /// two polls, the change is not detected (inherent to pid-based polling).
     pub fn poll(&mut self) -> Result<Vec<ProcessEvent>, WatchError> {
         let current: BTreeMap<u32, PathBuf> = self
             .lister
