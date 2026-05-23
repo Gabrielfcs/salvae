@@ -140,6 +140,46 @@ impl<C: Channel> SyncEngine<C> {
         self.apply_version(game_id, save_folder, &latest, now_ms)?;
         Ok(PullOutcome::Applied(latest))
     }
+
+    /// Push `save_folder` as a new version of `game_id`. Returns a conflict if
+    /// a newer version exists in the vault than what we last synced and our
+    /// content differs (the caller must [`resolve`](Self::resolve)).
+    pub fn push(
+        &mut self,
+        game_id: &str,
+        save_folder: &Path,
+        now_ms: u64,
+    ) -> Result<PushOutcome, SyncError> {
+        let packed = pack::pack_folder(save_folder)?;
+        let local_hash = content_hash(&packed);
+        let latest = self.vault().latest_version(game_id)?;
+
+        match latest {
+            None => self.do_push(game_id, &packed, now_ms),
+            Some(latest) if latest.content_hash == local_hash => {
+                self.state.set(game_id, latest.number);
+                Ok(PushOutcome::NoChange(latest.number))
+            }
+            Some(latest) if self.state.get(game_id) == Some(latest.number) => {
+                self.do_push(game_id, &packed, now_ms)
+            }
+            Some(latest) => Ok(PushOutcome::Conflict { remote: latest }),
+        }
+    }
+
+    /// Upload `packed` as a new version and record it in the sync state.
+    fn do_push(&mut self, game_id: &str, packed: &[u8], now_ms: u64) -> Result<PushOutcome, SyncError> {
+        let version = self.vault().push_version(
+            game_id,
+            packed,
+            &self.member,
+            &self.device_id,
+            now_ms,
+            self.max_versions,
+        )?;
+        self.state.set(game_id, version.number);
+        Ok(PushOutcome::Pushed(version))
+    }
 }
 
 /// Remove all entries inside `path` (but keep `path` itself).
@@ -211,5 +251,46 @@ mod tests {
             engine.pull("valheim", folder.path(), 300).unwrap(),
             PullOutcome::AlreadyUpToDate(1)
         );
+    }
+
+    #[test]
+    fn push_creates_first_version_then_detects_conflict() {
+        let channel = InMemoryChannel::new();
+        let backups = tempfile::tempdir().unwrap();
+
+        // Owner pushes v1.
+        let owner_folder = tempfile::tempdir().unwrap();
+        write(owner_folder.path(), "world.db", b"owner day1");
+        let mut owner =
+            SyncEngine::new(&channel, [2u8; 32], "owner", "dev-owner", 5, backups.path());
+        assert!(matches!(
+            owner.push("valheim", owner_folder.path(), 100).unwrap(),
+            PushOutcome::Pushed(v) if v.number == 1
+        ));
+
+        // Pushing the same content again is a no-op.
+        assert_eq!(
+            owner.push("valheim", owner_folder.path(), 110).unwrap(),
+            PushOutcome::NoChange(1)
+        );
+
+        // Friend pulls v1, edits, pushes v2.
+        let friend_backups = tempfile::tempdir().unwrap();
+        let friend_folder = tempfile::tempdir().unwrap();
+        let mut friend =
+            SyncEngine::new(&channel, [2u8; 32], "friend", "dev-friend", 5, friend_backups.path());
+        friend.pull("valheim", friend_folder.path(), 200).unwrap();
+        write(friend_folder.path(), "world.db", b"friend day2");
+        assert!(matches!(
+            friend.push("valheim", friend_folder.path(), 210).unwrap(),
+            PushOutcome::Pushed(v) if v.number == 2
+        ));
+
+        // Owner (still on v1 locally) edits and pushes -> CONFLICT (v2 exists).
+        write(owner_folder.path(), "world.db", b"owner day2 diverged");
+        assert!(matches!(
+            owner.push("valheim", owner_folder.path(), 220).unwrap(),
+            PushOutcome::Conflict { remote } if remote.number == 2
+        ));
     }
 }
