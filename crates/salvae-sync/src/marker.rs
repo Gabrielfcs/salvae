@@ -1,0 +1,1 @@
+//! "Currently playing" presence marker.
