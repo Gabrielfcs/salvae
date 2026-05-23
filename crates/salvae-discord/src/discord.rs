@@ -136,6 +136,36 @@ impl DiscordChannel {
     }
 }
 
+impl Channel for DiscordChannel {
+    fn list_messages(
+        &self,
+        before: Option<MessageId>,
+        limit: u16,
+    ) -> Result<Vec<Message>, VaultError> {
+        self.fetch_messages(before, limit)
+    }
+
+    fn send_message(
+        &self,
+        content: &str,
+        attachments: &[(String, Vec<u8>)],
+    ) -> Result<Message, VaultError> {
+        self.create_message(content, attachments)
+    }
+
+    fn download_attachment(
+        &self,
+        message_id: MessageId,
+        attachment: &AttachmentRef,
+    ) -> Result<Vec<u8>, VaultError> {
+        self.fetch_attachment(message_id, &attachment.filename)
+    }
+
+    fn delete_message(&self, message_id: MessageId) -> Result<(), VaultError> {
+        self.remove_message(message_id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,6 +295,24 @@ mod tests {
         let r = ch.remove_message(999);
         m.assert();
         assert!(matches!(r, Err(VaultError::NotFound)));
+    }
+
+    #[test]
+    fn usable_through_the_channel_trait() {
+        fn count_via_channel<C: Channel>(ch: &C) -> usize {
+            ch.list_messages(None, 100).unwrap().len()
+        }
+
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("GET", mockito::Matcher::Regex(r"/channels/123/messages.*".to_string()))
+            .with_status(200)
+            .with_body(r#"[{"id":"1","content":"x","attachments":[]}]"#)
+            .create();
+
+        let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
+        assert_eq!(count_via_channel(&ch), 1);
+        m.assert();
     }
 }
 
