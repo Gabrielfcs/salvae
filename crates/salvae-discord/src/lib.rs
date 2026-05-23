@@ -4,5 +4,6 @@
 //! over the Discord REST API using a bot token, so the vault can store and
 //! retrieve encrypted save versions in a private Discord channel.
 
+pub mod discord;
 pub mod parse;
 pub mod retry;
