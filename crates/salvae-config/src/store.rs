@@ -48,6 +48,74 @@ impl<S: SecretStore> ConfigStore<S> {
         }
         std::fs::write(&self.config_path, text).map_err(|e| ConfigError::Io(e.to_string()))
     }
+
+    /// Create a new group: derive its key from `password`, store the secret,
+    /// persist the config, and return the group plus a shareable invite string.
+    pub fn create_group(
+        &mut self,
+        name: &str,
+        password: &str,
+        token: &str,
+        guild_id: u64,
+        channel_id: u64,
+    ) -> Result<(GroupConfig, String), ConfigError> {
+        let salt = salvae_core::kdf::generate_salt();
+        let key = salvae_core::kdf::derive_key(password, &salt)?;
+        let id = random_id(8);
+
+        let group = GroupConfig {
+            id: id.clone(),
+            name: name.to_string(),
+            guild_id,
+            channel_id,
+            salt: hex::encode(salt),
+            max_versions: DEFAULT_MAX_VERSIONS,
+            game_paths: Default::default(),
+        };
+
+        self.secrets.set(&id, GroupSecret { token: token.to_string(), key })?;
+        self.config.groups.push(group.clone());
+        self.save()?;
+
+        let invite = invite::encode_invite(password, &salt, name, token, guild_id, channel_id)?;
+        Ok((group, invite))
+    }
+
+    /// Join a group from an invite string + the shared password.
+    pub fn join_group(&mut self, password: &str, invite: &str) -> Result<GroupConfig, ConfigError> {
+        let decoded = invite::decode_invite(password, invite)?;
+        let id = random_id(8);
+
+        let group = GroupConfig {
+            id: id.clone(),
+            name: decoded.name,
+            guild_id: decoded.guild_id,
+            channel_id: decoded.channel_id,
+            salt: hex::encode(decoded.salt),
+            max_versions: DEFAULT_MAX_VERSIONS,
+            game_paths: Default::default(),
+        };
+
+        self.secrets
+            .set(&id, GroupSecret { token: decoded.token, key: decoded.key })?;
+        self.config.groups.push(group.clone());
+        self.save()?;
+        Ok(group)
+    }
+
+    /// Fetch a group's secret (token + key) for the sync engine.
+    pub fn group_secret(&self, group_id: &str) -> Result<GroupSecret, ConfigError> {
+        self.secrets
+            .get(group_id)?
+            .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))
+    }
+
+    /// Remove a group and its secret, then persist.
+    pub fn remove_group(&mut self, group_id: &str) -> Result<(), ConfigError> {
+        self.config.groups.retain(|g| g.id != group_id);
+        self.secrets.remove(group_id)?;
+        self.save()
+    }
 }
 
 /// Generate a random lowercase-hex id of `bytes` random bytes.
@@ -90,5 +158,84 @@ mod tests {
         assert_eq!(a.len(), 16);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn create_group_persists_and_yields_a_working_invite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut store = ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+
+        let (group, invite) = store
+            .create_group("Crew", "pw123", "bot-token", 111, 222)
+            .unwrap();
+        assert_eq!(group.name, "Crew");
+        assert_eq!(store.groups().len(), 1);
+
+        // The group's secret is stored (token + key).
+        let secret = store.group_secret(&group.id).unwrap();
+        assert_eq!(secret.token, "bot-token");
+
+        // The produced invite decodes (with the password) to the same info+key.
+        let decoded = crate::invite::decode_invite("pw123", &invite).unwrap();
+        assert_eq!(decoded.token, "bot-token");
+        assert_eq!(decoded.guild_id, 111);
+        assert_eq!(decoded.key, secret.key);
+    }
+
+    #[test]
+    fn join_group_from_invite_adds_group_and_secret() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Owner creates a group on one "install".
+        let owner_path = dir.path().join("owner.toml");
+        let mut owner =
+            ConfigStore::load_or_default(&owner_path, InMemorySecretStore::new()).unwrap();
+        let (_g, invite) = owner.create_group("Crew", "pw123", "bot-token", 111, 222).unwrap();
+
+        // Friend joins on another "install".
+        let friend_path = dir.path().join("friend.toml");
+        let mut friend =
+            ConfigStore::load_or_default(&friend_path, InMemorySecretStore::new()).unwrap();
+        let joined = friend.join_group("pw123", &invite).unwrap();
+
+        assert_eq!(joined.name, "Crew");
+        assert_eq!(joined.guild_id, 111);
+        assert_eq!(joined.channel_id, 222);
+        let secret = friend.group_secret(&joined.id).unwrap();
+        assert_eq!(secret.token, "bot-token");
+    }
+
+    #[test]
+    fn join_with_wrong_password_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut owner =
+            ConfigStore::load_or_default(dir.path().join("o.toml"), InMemorySecretStore::new())
+                .unwrap();
+        let (_g, invite) = owner.create_group("Crew", "right", "tok", 1, 2).unwrap();
+
+        let mut friend =
+            ConfigStore::load_or_default(dir.path().join("f.toml"), InMemorySecretStore::new())
+                .unwrap();
+        assert!(matches!(
+            friend.join_group("wrong", &invite),
+            Err(ConfigError::WrongPassword)
+        ));
+        assert!(friend.groups().is_empty());
+    }
+
+    #[test]
+    fn remove_group_drops_config_and_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.toml");
+        let mut store = ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+        let (group, _invite) = store.create_group("Crew", "pw", "tok", 1, 2).unwrap();
+
+        store.remove_group(&group.id).unwrap();
+        assert!(store.groups().is_empty());
+        assert!(matches!(
+            store.group_secret(&group.id),
+            Err(ConfigError::GroupNotFound(_))
+        ));
     }
 }
