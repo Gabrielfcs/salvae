@@ -1,3 +1,6 @@
 /target
 **/*.rs.bk
 Cargo.lock.bak
+
+# Planos de implementação ficam apenas locais (não versionados)
+docs/superpowers/plans/
