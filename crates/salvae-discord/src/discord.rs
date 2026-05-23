@@ -125,6 +125,15 @@ impl DiscordChannel {
             .map_err(|e| VaultError::Transport(e.to_string()))?;
         Ok(buf)
     }
+
+    /// DELETE a message by id.
+    pub fn remove_message(&self, message_id: u64) -> Result<(), VaultError> {
+        let url = format!("{}/channels/{}/messages/{}", self.base_url, self.channel_id, message_id);
+        execute_with_retry(self.max_retries, Self::sleep_secs, || {
+            self.authed(self.agent.delete(&url)).call()
+        })?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -227,6 +236,33 @@ mod tests {
             .create();
         let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
         let r = ch.fetch_attachment(55, "chunk_0.bin");
+        m.assert();
+        assert!(matches!(r, Err(VaultError::NotFound)));
+    }
+
+    #[test]
+    fn remove_message_succeeds_on_204() {
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("DELETE", "/channels/123/messages/55")
+            .match_header("authorization", "Bot tok")
+            .with_status(204)
+            .create();
+        let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
+        ch.remove_message(55).unwrap();
+        m.assert();
+    }
+
+    #[test]
+    fn remove_missing_message_is_not_found() {
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("DELETE", "/channels/123/messages/999")
+            .with_status(404)
+            .with_body(r#"{"message":"Unknown Message","code":10008}"#)
+            .create();
+        let ch = DiscordChannel::new("tok", 123).with_base_url(server.url());
+        let r = ch.remove_message(999);
         m.assert();
         assert!(matches!(r, Err(VaultError::NotFound)));
     }
