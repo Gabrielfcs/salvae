@@ -1,0 +1,19 @@
+[package]
+name = "salvae-agent"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Background agent that syncs co-op saves on game open/close for Salvaê."
+
+[dependencies]
+salvae-config = { path = "../salvae-config" }
+salvae-sync = { path = "../salvae-sync" }
+salvae-detect = { path = "../salvae-detect" }
+salvae-watch = { path = "../salvae-watch" }
+salvae-vault = { path = "../salvae-vault" }
+salvae-discord = { path = "../salvae-discord" }
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
