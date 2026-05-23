@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/salvae-core", "crates/salvae-vault", "crates/salvae-discord"]
+members = ["crates/salvae-core", "crates/salvae-vault", "crates/salvae-discord", "crates/salvae-config"]
 
 [workspace.package]
 edition = "2021"
