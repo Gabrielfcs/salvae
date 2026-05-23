@@ -217,6 +217,33 @@ impl<C: Channel> SyncEngine<C> {
         }
     }
 
+    /// List all stored versions of `game_id`, oldest first.
+    pub fn list_versions(
+        &self,
+        game_id: &str,
+    ) -> Result<Vec<salvae_core::version::SaveVersion>, SyncError> {
+        Ok(self.vault().list_versions(game_id)?)
+    }
+
+    /// Restore a specific `version` of `game_id` into `save_folder` (backing up
+    /// the current local contents first). Returns the restored version's metadata.
+    pub fn restore_version(
+        &mut self,
+        game_id: &str,
+        version: u64,
+        save_folder: &Path,
+        now_ms: u64,
+    ) -> Result<salvae_core::version::SaveVersion, SyncError> {
+        let target = self
+            .vault()
+            .list_versions(game_id)?
+            .into_iter()
+            .find(|v| v.number == version)
+            .ok_or(salvae_vault::VaultError::NotFound)?;
+        self.apply_version(game_id, save_folder, &target, now_ms)?;
+        Ok(target)
+    }
+
     /// Post a "currently playing" marker for `game_id` (expires after the TTL).
     pub fn begin_playing(&self, game_id: &str, now_ms: u64) -> Result<(), SyncError> {
         let record = PlayingRecord {
@@ -511,5 +538,61 @@ mod tests {
         let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b.path());
         me.begin_playing("valheim", 1000).unwrap();
         assert!(me.who_is_playing("valheim", 1000).unwrap().is_empty());
+    }
+
+    fn engine_over<'a>(
+        channel: &'a InMemoryChannel,
+        backups: &std::path::Path,
+    ) -> SyncEngine<&'a InMemoryChannel> {
+        SyncEngine::new(channel, [5u8; 32], "tester", "dev", 5, backups.to_path_buf())
+    }
+
+    fn seed(channel: &InMemoryChannel, game_id: &str, content: &[u8]) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("world.db"), content).unwrap();
+        let packed = crate::pack::pack_folder(dir.path()).unwrap();
+        Vault::new(channel, [5u8; 32])
+            .push_version(game_id, &packed, "seed", "seed-dev", 1, 5)
+            .unwrap();
+    }
+
+    #[test]
+    fn list_versions_returns_history_in_order() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"v1 content");
+        seed(&channel, "game", b"v2 content");
+        let backups = tempfile::tempdir().unwrap();
+        let engine = engine_over(&channel, backups.path());
+        assert_eq!(
+            engine.list_versions("game").unwrap().iter().map(|v| v.number).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn restore_version_writes_that_version_to_the_folder() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"day one");
+        seed(&channel, "game", b"day two");
+        let backups = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+
+        let folder = tempfile::tempdir().unwrap();
+        let restored = engine.restore_version("game", 1, folder.path(), 100).unwrap();
+        assert_eq!(restored.number, 1);
+        assert_eq!(std::fs::read(folder.path().join("world.db")).unwrap(), b"day one");
+    }
+
+    #[test]
+    fn restore_missing_version_is_not_found() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"only one");
+        let backups = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+        let folder = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            engine.restore_version("game", 99, folder.path(), 100),
+            Err(SyncError::Vault(salvae_vault::VaultError::NotFound))
+        ));
     }
 }
