@@ -119,4 +119,51 @@ mod tests {
             vec![GameEvent::Closed { game_id: "steam:892970".into() }]
         );
     }
+
+    #[test]
+    fn full_loop_from_listings_to_game_events() {
+        use crate::process::{ProcessInfo, ProcessLister, Watcher};
+        use crate::WatchError;
+        use std::cell::RefCell;
+
+        struct FakeLister {
+            frames: RefCell<std::collections::VecDeque<Vec<ProcessInfo>>>,
+        }
+        impl ProcessLister for FakeLister {
+            fn list(&self) -> Result<Vec<ProcessInfo>, WatchError> {
+                Ok(self.frames.borrow_mut().pop_front().unwrap_or_default())
+            }
+        }
+
+        let valheim = ProcessInfo { pid: 7, exe_path: "C:/Steam/common/Valheim/valheim.exe".into() };
+        let lister = FakeLister {
+            frames: RefCell::new(
+                vec![
+                    vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+                    vec![
+                        ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() },
+                        valheim.clone(),
+                    ],
+                    vec![ProcessInfo { pid: 1, exe_path: "C:/Windows/explorer.exe".into() }],
+                ]
+                .into(),
+            ),
+        };
+
+        let mut watcher = Watcher::new(lister);
+        let mut detector = Detector::new(games());
+
+        // Poll 1: only explorer (no game).
+        assert!(detector.process(&watcher.poll().unwrap()).is_empty());
+        // Poll 2: Valheim launches -> Opened.
+        assert_eq!(
+            detector.process(&watcher.poll().unwrap()),
+            vec![GameEvent::Opened { game_id: "steam:892970".into() }]
+        );
+        // Poll 3: Valheim exits -> Closed.
+        assert_eq!(
+            detector.process(&watcher.poll().unwrap()),
+            vec![GameEvent::Closed { game_id: "steam:892970".into() }]
+        );
+    }
 }
