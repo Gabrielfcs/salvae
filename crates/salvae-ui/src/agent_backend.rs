@@ -195,6 +195,13 @@ impl Backend for AgentBackend {
             .collect()
     }
 
+    fn validate_token(&self, token: &str) -> Result<(u64, String), String> {
+        let me = DiscordDiscovery::new(token)
+            .me()
+            .map_err(|e| e.to_string())?;
+        Ok((me.id, me.name))
+    }
+
     fn fetch_guilds(&self, token: &str) -> Result<Vec<GuildView>, String> {
         let guilds = DiscordDiscovery::new(token)
             .list_guilds()

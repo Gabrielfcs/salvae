@@ -24,6 +24,11 @@ pub struct ViewModel {
     /// Whether a `FetchGuilds` has succeeded (token validated) — gates the
     /// server/channel pickers in the create dialog.
     pub guilds_loaded: bool,
+    /// Whether the bot token validated (wizard step 2).
+    pub token_validated: bool,
+    /// The validated bot's id (OAuth2 client id) + display name.
+    pub bot_id: Option<u64>,
+    pub bot_name: Option<String>,
     pub history: BTreeMap<String, Vec<VersionView>>,
     pub scan_armed: Vec<String>,
     pub scan_results: BTreeMap<String, Vec<DiscoveredCandidate>>,
@@ -39,6 +44,11 @@ impl ViewModel {
         match event {
             Event::Groups(g) => self.groups = g,
             Event::InstalledGames(g) => self.installed_games = g,
+            Event::TokenValidated { bot_id, bot_name } => {
+                self.token_validated = true;
+                self.bot_id = Some(bot_id);
+                self.bot_name = Some(bot_name);
+            }
             Event::DiscoveredGuilds(g) => {
                 self.discovered_guilds = g;
                 self.discovered_channels.clear();

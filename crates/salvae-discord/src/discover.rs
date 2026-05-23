@@ -31,6 +31,30 @@ pub struct TextChannel {
     pub name: String,
 }
 
+/// The bot's own identity (`GET /users/@me`). The id doubles as the OAuth2
+/// `client_id` used to build the "add bot to server" invite URL.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BotIdentity {
+    pub id: u64,
+    pub name: String,
+}
+
+/// Parse `GET /users/@me` into the bot's id + display name.
+pub fn parse_me(v: &Value) -> Result<BotIdentity, VaultError> {
+    let id_str = v
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| VaultError::Transport("user JSON missing string `id`".into()))?;
+    Ok(BotIdentity {
+        id: parse_snowflake(id_str)?,
+        name: v
+            .get("username")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+    })
+}
+
 /// Parse `GET /users/@me/guilds` (array of partial guild objects).
 pub fn parse_guilds(v: &Value) -> Result<Vec<Guild>, VaultError> {
     let arr = v
@@ -130,6 +154,13 @@ impl DiscordDiscovery {
         serde_json::from_str(&body).map_err(|e| VaultError::Transport(e.to_string()))
     }
 
+    /// Fetch the bot's own identity, validating the token (an invalid token
+    /// → 401 surfaces as a transport error).
+    pub fn me(&self) -> Result<BotIdentity, VaultError> {
+        let url = format!("{}/users/@me", self.base_url);
+        parse_me(&self.get_json(&url)?)
+    }
+
     /// List the guilds (servers) this bot is a member of. A failed call (e.g.
     /// an invalid token → 401) surfaces as a transport error.
     pub fn list_guilds(&self) -> Result<Vec<Guild>, VaultError> {
@@ -208,6 +239,35 @@ mod tests {
                 name: "Crew".into()
             }]
         );
+    }
+
+    #[test]
+    fn parse_me_reads_id_and_username() {
+        let v = serde_json::json!({ "id": "999", "username": "SalvaeBot" });
+        assert_eq!(
+            parse_me(&v).unwrap(),
+            BotIdentity {
+                id: 999,
+                name: "SalvaeBot".into()
+            }
+        );
+    }
+
+    #[test]
+    fn me_authenticates_and_parses() {
+        let mut server = mockito::Server::new();
+        let m = server
+            .mock("GET", "/users/@me")
+            .match_header("authorization", "Bot tok")
+            .with_status(200)
+            .with_body(r#"{"id":"999","username":"SalvaeBot"}"#)
+            .create();
+
+        let d = DiscordDiscovery::new("tok").with_base_url(server.url());
+        let me = d.me().unwrap();
+        m.assert();
+        assert_eq!(me.id, 999);
+        assert_eq!(me.name, "SalvaeBot");
     }
 
     #[test]

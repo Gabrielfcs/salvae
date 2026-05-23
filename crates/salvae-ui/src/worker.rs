@@ -29,6 +29,10 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             ],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::ValidateToken { token } => match backend.validate_token(&token) {
+            Ok((bot_id, bot_name)) => vec![Event::TokenValidated { bot_id, bot_name }],
+            Err(e) => vec![Event::Error(e)],
+        },
         Command::FetchGuilds { token } => match backend.fetch_guilds(&token) {
             Ok(guilds) => vec![Event::DiscoveredGuilds(guilds)],
             Err(e) => vec![Event::Error(e)],
@@ -169,6 +173,9 @@ mod tests {
                 .clone()
                 .unwrap_or_else(|| Ok("invite-blob".into()))
         }
+        fn validate_token(&self, _: &str) -> Result<(u64, String), String> {
+            Ok((42, "SalvaeBot".into()))
+        }
         fn fetch_guilds(&self, _: &str) -> Result<Vec<GuildView>, String> {
             Ok(self.guilds_result.clone())
         }
@@ -258,6 +265,24 @@ mod tests {
         assert!(events.contains(&Event::ResolvedConflict {
             game_id: "steam:1".into()
         }));
+    }
+
+    #[test]
+    fn validate_token_emits_token_validated() {
+        let mut b = FakeBackend::default();
+        let events = dispatch(
+            &mut b,
+            Command::ValidateToken {
+                token: "tok".into(),
+            },
+        );
+        assert_eq!(
+            events,
+            vec![Event::TokenValidated {
+                bot_id: 42,
+                bot_name: "SalvaeBot".into()
+            }]
+        );
     }
 
     #[test]

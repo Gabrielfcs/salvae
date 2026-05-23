@@ -16,6 +16,10 @@ pub enum Command {
         guild_id: u64,
         channel_id: u64,
     },
+    /// Validate a bot token (and fetch the bot's identity) for the wizard.
+    ValidateToken {
+        token: String,
+    },
     /// List the servers the bot token can see (create-group picker).
     FetchGuilds {
         token: String,
@@ -65,6 +69,11 @@ pub enum Command {
 pub enum Event {
     Groups(Vec<GroupView>),
     InstalledGames(Vec<GameView>),
+    /// The bot token validated; carries the bot's id (OAuth2 client id) + name.
+    TokenValidated {
+        bot_id: u64,
+        bot_name: String,
+    },
     /// Servers the bot can see (response to `FetchGuilds`).
     DiscoveredGuilds(Vec<GuildView>),
     /// Text channels of the selected server (response to `FetchChannels`).

@@ -16,6 +16,8 @@ struct Forms {
     selected_group: Option<String>,
     show_create: bool,
     show_join: bool,
+    /// Current step of the create-group wizard (0..=3).
+    create_step: u8,
     new_name: String,
     new_password: String,
     new_token: String,
@@ -138,15 +140,19 @@ impl SalvaeApp {
         self.forms.new_name.clear();
         self.forms.new_password.clear();
         self.forms.new_token.clear();
+        self.forms.create_step = 0;
         self.forms.create_guild = None;
         self.forms.create_channel = None;
         self.vm.discovered_guilds.clear();
         self.vm.discovered_channels.clear();
         self.vm.guilds_loaded = false;
+        self.vm.token_validated = false;
+        self.vm.bot_id = None;
+        self.vm.bot_name = None;
     }
 
-    /// The create-group dialog: paste a bot token, pick a server + channel, set
-    /// a name + password. No ids are typed by hand.
+    /// The create-group wizard: guides the owner through making a Discord bot,
+    /// validating its token, adding it to a server, and picking a channel.
     fn create_modal(&mut self, ctx: &egui::Context) {
         if !self.forms.show_create {
             return;
@@ -159,127 +165,224 @@ impl SalvaeApp {
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.set_min_width(360.0);
-
-                ui.label("Group name");
-                ui.text_edit_singleline(&mut self.forms.new_name);
-                ui.add_space(4.0);
-
-                ui.label("Shared password");
-                ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
-                ui.add_space(4.0);
-
-                ui.label("Bot token");
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.forms.new_token)
-                            .password(true)
-                            .desired_width(220.0),
-                    );
-                    let token = self.forms.new_token.trim().to_string();
-                    if ui.button("Find servers").clicked() && !token.is_empty() {
-                        // Hide the pickers until this token is (re)validated.
-                        self.forms.create_guild = None;
-                        self.forms.create_channel = None;
-                        self.vm.guilds_loaded = false;
-                        self.vm.discovered_guilds.clear();
-                        self.vm.discovered_channels.clear();
-                        self.send(Command::FetchGuilds { token });
-                    }
-                });
-                ui.label(
-                    egui::RichText::new("Add the bot to your server first, then paste its token.")
-                        .color(theme::MUTED)
-                        .small(),
-                );
-
-                // The server/channel pickers appear only after the token is
-                // validated (a successful "Find servers").
-                if self.vm.guilds_loaded {
-                    ui.add_space(4.0);
-                    if self.vm.discovered_guilds.is_empty() {
-                        ui.label(
-                            egui::RichText::new(
-                                "Token OK, but the bot isn't in any server yet. Add it, then retry.",
-                            )
-                            .color(theme::MUTED),
-                        );
-                    } else {
-                        // Server picker.
-                        let guilds = self.vm.discovered_guilds.clone();
-                        let token = self.forms.new_token.trim().to_string();
-                        ui.label("Server");
-                        let prev_guild = self.forms.create_guild;
-                        egui::ComboBox::from_id_salt("create_guild")
-                            .selected_text(label_for(
-                                &guilds,
-                                self.forms.create_guild,
-                                "Select a server",
-                            ))
-                            .show_ui(ui, |ui| {
-                                for g in &guilds {
-                                    ui.selectable_value(
-                                        &mut self.forms.create_guild,
-                                        Some(g.id),
-                                        &g.name,
-                                    );
-                                }
-                            });
-                        if self.forms.create_guild != prev_guild {
-                            self.forms.create_channel = None;
-                            if let Some(gid) = self.forms.create_guild {
-                                self.send(Command::FetchChannels {
-                                    token: token.clone(),
-                                    guild_id: gid,
-                                });
-                            }
-                        }
-
-                        // Channel picker (only once a server is chosen).
-                        if self.forms.create_guild.is_some() {
-                            let channels = self.vm.discovered_channels.clone();
-                            ui.add_space(4.0);
-                            ui.label("Channel");
-                            egui::ComboBox::from_id_salt("create_channel")
-                                .selected_text(label_for(
-                                    &channels,
-                                    self.forms.create_channel,
-                                    "Select a channel",
-                                ))
-                                .show_ui(ui, |ui| {
-                                    for c in &channels {
-                                        ui.selectable_value(
-                                            &mut self.forms.create_channel,
-                                            Some(c.id),
-                                            format!("# {}", c.name),
-                                        );
-                                    }
-                                });
-                        }
-                    }
+                ui.set_min_width(420.0);
+                match self.forms.create_step {
+                    0 => self.wizard_step_bot(ui),
+                    1 => self.wizard_step_token(ui),
+                    2 => self.wizard_step_channel(ui),
+                    _ => self.wizard_step_name(ui),
                 }
-                ui.add_space(8.0);
-
-                let ready = !self.forms.new_name.trim().is_empty()
-                    && !self.forms.new_password.is_empty()
-                    && self.forms.create_guild.is_some()
-                    && self.forms.create_channel.is_some();
-                ui.add_enabled_ui(ready, |ui| {
-                    if theme::primary_button(ui, "Create group").clicked() {
-                        self.send(Command::CreateGroup {
-                            name: self.forms.new_name.clone(),
-                            password: self.forms.new_password.clone(),
-                            token: self.forms.new_token.clone(),
-                            guild_id: self.forms.create_guild.unwrap(),
-                            channel_id: self.forms.create_channel.unwrap(),
-                        });
-                        self.forms.show_create = false;
-                    }
-                });
             });
         // Honour the window's close (X) button.
         if !open {
             self.forms.show_create = false;
+        }
+    }
+
+    /// Step 1: create the bot in the Discord Developer Portal.
+    fn wizard_step_bot(&mut self, ui: &mut egui::Ui) {
+        wizard_header(ui, "Create your Discord bot", 1);
+        ui.label(
+            "Salvaê keeps your saves in a private Discord channel, accessed by a bot. \
+             You only set this up once per group.",
+        );
+        ui.add_space(8.0);
+        ui.hyperlink_to(
+            "Open the Discord Developer Portal ↗",
+            "https://discord.com/developers/applications",
+        );
+        ui.add_space(8.0);
+        for line in [
+            "1. New Application → give it a name (e.g. \"Salvaê\").",
+            "2. Open the Bot tab → Reset Token → Copy.",
+            "3. Keep the token secret — it's the group's key to the channel.",
+        ] {
+            ui.label(egui::RichText::new(line).color(theme::MUTED));
+        }
+        ui.add_space(10.0);
+        ui.separator();
+        ui.horizontal(|ui| {
+            if theme::primary_button(ui, "Next").clicked() {
+                self.forms.create_step = 1;
+            }
+        });
+    }
+
+    /// Step 2: paste + validate the bot token.
+    fn wizard_step_token(&mut self, ui: &mut egui::Ui) {
+        wizard_header(ui, "Paste the bot token", 2);
+        ui.label("Bot token");
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.forms.new_token)
+                    .password(true)
+                    .desired_width(300.0),
+            );
+            let token = self.forms.new_token.trim().to_string();
+            if ui.button("Validate").clicked() && !token.is_empty() {
+                self.vm.token_validated = false;
+                self.send(Command::ValidateToken { token });
+            }
+        });
+        if self.vm.token_validated {
+            if let Some(name) = self.vm.bot_name.clone() {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(format!("✓ Connected as {name}")).color(GREEN));
+            }
+        }
+        ui.add_space(10.0);
+        ui.separator();
+        let validated = self.vm.token_validated;
+        ui.horizontal(|ui| {
+            if ui.button("Back").clicked() {
+                self.forms.create_step = 0;
+            }
+            ui.add_enabled_ui(validated, |ui| {
+                if theme::primary_button(ui, "Next").clicked() {
+                    self.forms.create_step = 2;
+                }
+            });
+        });
+    }
+
+    /// Step 3: invite the bot to a server, then pick the server + channel.
+    fn wizard_step_channel(&mut self, ui: &mut egui::Ui) {
+        wizard_header(ui, "Add the bot & choose the channel", 3);
+        if let Some(bot_id) = self.vm.bot_id {
+            let url = bot_invite_url(bot_id);
+            ui.hyperlink_to("Add the bot to your server ↗", &url);
+            if ui.button("Copy invite link").clicked() {
+                ui.output_mut(|o| o.copied_text = url);
+            }
+        }
+        ui.label(
+            egui::RichText::new("After authorizing in the browser, click Find servers.")
+                .color(theme::MUTED)
+                .small(),
+        );
+        ui.add_space(6.0);
+        let token = self.forms.new_token.trim().to_string();
+        if ui.button("Find servers").clicked() && !token.is_empty() {
+            self.forms.create_guild = None;
+            self.forms.create_channel = None;
+            self.vm.guilds_loaded = false;
+            self.vm.discovered_guilds.clear();
+            self.vm.discovered_channels.clear();
+            self.send(Command::FetchGuilds { token });
+        }
+        if self.vm.guilds_loaded {
+            ui.add_space(4.0);
+            if self.vm.discovered_guilds.is_empty() {
+                ui.label(
+                    egui::RichText::new(
+                        "Token OK, but the bot isn't in any server yet. Add it, then retry.",
+                    )
+                    .color(theme::MUTED),
+                );
+            } else {
+                self.channel_pickers_ui(ui);
+            }
+        }
+        ui.add_space(10.0);
+        ui.separator();
+        let ready = self.forms.create_channel.is_some();
+        ui.horizontal(|ui| {
+            if ui.button("Back").clicked() {
+                self.forms.create_step = 1;
+            }
+            ui.add_enabled_ui(ready, |ui| {
+                if theme::primary_button(ui, "Next").clicked() {
+                    self.forms.create_step = 3;
+                }
+            });
+        });
+    }
+
+    /// Step 4: name the group + set the shared password, then create.
+    fn wizard_step_name(&mut self, ui: &mut egui::Ui) {
+        wizard_header(ui, "Name your group", 4);
+        ui.label("Group name");
+        ui.text_edit_singleline(&mut self.forms.new_name);
+        ui.add_space(4.0);
+        ui.label("Shared password");
+        ui.add(egui::TextEdit::singleline(&mut self.forms.new_password).password(true));
+        ui.label(
+            egui::RichText::new(
+                "Everyone in the group types this same password (share it out-of-band).",
+            )
+            .color(theme::MUTED)
+            .small(),
+        );
+        ui.add_space(10.0);
+        ui.separator();
+        let ready = !self.forms.new_name.trim().is_empty()
+            && !self.forms.new_password.is_empty()
+            && self.forms.create_guild.is_some()
+            && self.forms.create_channel.is_some();
+        ui.horizontal(|ui| {
+            if ui.button("Back").clicked() {
+                self.forms.create_step = 2;
+            }
+            ui.add_enabled_ui(ready, |ui| {
+                if theme::primary_button(ui, "Create group").clicked() {
+                    self.send(Command::CreateGroup {
+                        name: self.forms.new_name.clone(),
+                        password: self.forms.new_password.clone(),
+                        token: self.forms.new_token.clone(),
+                        guild_id: self.forms.create_guild.unwrap(),
+                        channel_id: self.forms.create_channel.unwrap(),
+                    });
+                    self.forms.show_create = false;
+                }
+            });
+        });
+    }
+
+    /// The server + channel dropdowns (shared by the wizard's channel step).
+    fn channel_pickers_ui(&mut self, ui: &mut egui::Ui) {
+        let guilds = self.vm.discovered_guilds.clone();
+        let token = self.forms.new_token.trim().to_string();
+        ui.label("Server");
+        let prev_guild = self.forms.create_guild;
+        egui::ComboBox::from_id_salt("create_guild")
+            .selected_text(label_for(
+                &guilds,
+                self.forms.create_guild,
+                "Select a server",
+            ))
+            .show_ui(ui, |ui| {
+                for g in &guilds {
+                    ui.selectable_value(&mut self.forms.create_guild, Some(g.id), &g.name);
+                }
+            });
+        if self.forms.create_guild != prev_guild {
+            self.forms.create_channel = None;
+            if let Some(gid) = self.forms.create_guild {
+                self.send(Command::FetchChannels {
+                    token: token.clone(),
+                    guild_id: gid,
+                });
+            }
+        }
+        if self.forms.create_guild.is_some() {
+            let channels = self.vm.discovered_channels.clone();
+            ui.add_space(4.0);
+            ui.label("Channel");
+            egui::ComboBox::from_id_salt("create_channel")
+                .selected_text(label_for(
+                    &channels,
+                    self.forms.create_channel,
+                    "Select a channel",
+                ))
+                .show_ui(ui, |ui| {
+                    for c in &channels {
+                        ui.selectable_value(
+                            &mut self.forms.create_channel,
+                            Some(c.id),
+                            format!("# {}", c.name),
+                        );
+                    }
+                });
         }
     }
 
@@ -507,6 +610,31 @@ fn modal_shield(ctx: &egui::Context) -> bool {
             ui.allocate_rect(screen, egui::Sense::click()).clicked()
         })
         .inner
+}
+
+/// Confirmation green (Tailwind green-500) for the "connected" check.
+const GREEN: egui::Color32 = egui::Color32::from_rgb(34, 197, 94);
+
+/// Minimal bot permissions for Salvaê: View Channel, Send Messages, Manage
+/// Messages (prune old versions), Read Message History, Attach Files.
+const BOT_PERMISSIONS: u64 = 1024 + 2048 + 8192 + 65536 + 32768;
+
+/// The OAuth2 "add bot to server" URL for a bot/application id.
+fn bot_invite_url(bot_id: u64) -> String {
+    format!(
+        "https://discord.com/oauth2/authorize?client_id={bot_id}&scope=bot&permissions={BOT_PERMISSIONS}"
+    )
+}
+
+/// A wizard step's heading + "Step N of 4" subtitle.
+fn wizard_header(ui: &mut egui::Ui, title: &str, step: u8) {
+    ui.heading(title);
+    ui.label(
+        egui::RichText::new(format!("Step {step} of 4"))
+            .color(theme::MUTED)
+            .small(),
+    );
+    ui.add_space(8.0);
 }
 
 /// A picker item with a numeric id and a display name (server or channel).

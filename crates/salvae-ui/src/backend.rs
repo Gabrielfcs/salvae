@@ -12,6 +12,8 @@ pub trait Backend {
     /// Games discovered on this machine.
     fn installed_games(&self) -> Vec<GameView>;
 
+    /// Validate `token` and return the bot's id (OAuth2 client id) + name.
+    fn validate_token(&self, token: &str) -> Result<(u64, String), String>;
     /// List the servers the bot `token` can see (create-group picker).
     fn fetch_guilds(&self, token: &str) -> Result<Vec<GuildView>, String>;
     /// List a server's text channels (create-group picker).
