@@ -24,7 +24,7 @@ const TICK_INTERVAL: Duration = Duration::from_secs(4);
 
 /// Decode the embedded mascot logo into the window/taskbar icon.
 fn load_window_icon() -> egui::IconData {
-    let image = image::load_from_memory(salvae_ui::icon::bot_logo_png())
+    let image = image::load_from_memory(salvae_ui::icon::app_icon_png())
         .expect("decode window icon")
         .to_rgba8();
     let (width, height) = image.dimensions();

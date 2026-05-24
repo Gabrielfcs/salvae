@@ -659,14 +659,9 @@ impl SalvaeApp {
     fn bot_logo(&mut self, ctx: &egui::Context) -> egui::TextureHandle {
         self.bot_logo
             .get_or_insert_with(|| {
-                let img = image::load_from_memory(crate::icon::bot_logo_png())
-                    .expect("decode logo")
-                    .to_rgba8();
-                let (w, h) = img.dimensions();
-                let color = egui::ColorImage::from_rgba_unmultiplied(
-                    [w as usize, h as usize],
-                    img.as_raw(),
-                );
+                let (rgba, w, h) = crate::icon::welcome_logo_rgba();
+                let color =
+                    egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
                 ctx.load_texture("bot-logo", color, egui::TextureOptions::LINEAR)
             })
             .clone()
