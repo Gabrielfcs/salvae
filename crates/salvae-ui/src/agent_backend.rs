@@ -89,7 +89,9 @@ fn friendly_sync_error(raw: &str) -> String {
          ver o histórico, enviar mensagens e anexar arquivos nele."
             .to_string()
     } else if raw.contains("401") {
-        "Token do bot inválido (401). Refaça o grupo com um token válido.".to_string()
+        "Token inválido (401) — o token do grupo mudou. O dono deve usar \
+         \"Atualizar token\"; os outros membros precisam de um convite novo."
+            .to_string()
     } else if raw.contains("404") {
         "Canal do Discord não encontrado (404). Verifique o canal escolhido.".to_string()
     } else {
@@ -252,10 +254,29 @@ impl Backend for AgentBackend {
             .create_group(name, password, token, guild_id, channel_id)
             .map_err(|e| e.to_string())?;
         self.rebuild_agent()?;
+        // Best-effort: post the invite into the channel so members can grab it
+        // from Discord (they still need the password, shared out-of-band).
+        let message = format!(
+            "**Convite do Salvaê para \"{name}\"**\nCole no app (menu \"Entrar em grupo\") \
+             + a senha do grupo (combinada por fora):\n```\n{invite}\n```"
+        );
+        let _ = DiscordChannel::new(token, channel_id).create_message(&message, &[]);
         Ok(invite)
     }
 
     fn join_group(&mut self, password: &str, invite: &str) -> Result<(), String> {
+        // Reject an outdated invite: if its bot token is no longer valid (401),
+        // the owner must share a fresh invite. Other errors (e.g. offline) don't
+        // block the join.
+        let decoded =
+            salvae_config::invite::decode_invite(password, invite).map_err(|e| e.to_string())?;
+        if let Err(e) = DiscordDiscovery::new(&decoded.token).me() {
+            if e.to_string().contains("401") {
+                return Err("Convite desatualizado: o token não é mais válido. \
+                            Peça um convite novo ao dono do grupo."
+                    .to_string());
+            }
+        }
         self.store
             .join_group(password, invite)
             .map_err(|e| e.to_string())?;
