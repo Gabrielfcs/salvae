@@ -1,0 +1,5 @@
+# Statically link the MSVC C runtime on Windows so the release binary has no
+# external dependency on the Visual C++ redistributable — it can be shared and
+# run as a single self-contained .exe on any Windows machine.
+[target.'cfg(windows)']
+rustflags = ["-C", "target-feature=+crt-static"]
