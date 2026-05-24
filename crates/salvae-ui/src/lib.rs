@@ -1,5 +1,5 @@
-//! Salvaê desktop UI: tray app, on-demand window, and the background worker
-//! that drives the sync agent.
+//! Salvaê desktop UI: the window and the background worker that drives the
+//! sync agent.
 
 pub mod backend;
 pub mod command;
@@ -15,8 +15,6 @@ pub mod agent_backend;
 pub mod app;
 #[cfg(not(test))]
 pub mod theme;
-#[cfg(not(test))]
-pub mod tray;
 
 /// Errors surfaced by the UI layer.
 #[derive(Debug, thiserror::Error)]

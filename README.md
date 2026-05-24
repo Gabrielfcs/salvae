@@ -109,7 +109,7 @@ Workspace Cargo dividido por responsabilidade:
 | `salvae-detect`  | Catálogo de jogos (Steam/Epic) + descoberta de pasta de save        |
 | `salvae-watch`   | Observa abrir/fechar de processos e detecta os jogos                |
 | `salvae-agent`   | Liga observação → detecção → sync por grupo                         |
-| `salvae-ui`      | App de bandeja + janela (egui) e o worker em segundo plano          |
+| `salvae-ui`      | Janela (egui) e o worker de sync em segundo plano                   |
 
 ## Segurança
 
@@ -117,6 +117,16 @@ Workspace Cargo dividido por responsabilidade:
   grupo**, não do Discord nem do token do bot.
 - O token do bot é uma credencial **por grupo**, escopada só ao canal do grupo.
 - Segredos locais (token + chave derivada) protegidos pela **DPAPI** do Windows.
+
+## Roadmap
+
+- **Rodar em segundo plano na bandeja do sistema.** Hoje, fechar a janela (X)
+  encerra o app; para continuar sincronizando, basta deixá-lo minimizado (o
+  worker de sync roda independente da janela). O objetivo é fechar para a
+  bandeja, com "Abrir/Sair" funcionando de verdade. Isso exige assumir o event
+  loop do `winit` (em vez do `eframe::run_native`), porque com a janela
+  escondida o `eframe` para de chamar `update` e os cliques da bandeja não são
+  processados.
 
 ## Licença
 

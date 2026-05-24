@@ -1,7 +1,6 @@
 //! The egui application: renders the ViewModel and turns user input into
-//! Commands. Drains worker Events each frame and minimizes to the taskbar on
-//! close (the sync keeps running on the worker thread; restore via the taskbar
-//! or the tray).
+//! Commands. Drains worker Events each frame. Closing the window quits the app;
+//! minimizing keeps the sync running on the worker thread.
 
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -44,14 +43,8 @@ pub struct SalvaeApp {
     /// Whether the user's display name is set (gates the app on first run).
     name_set: bool,
     /// The game id of the conflict we have already forced the window open for,
-    /// so a single conflict surfaces the window exactly once (the user can
-    /// re-minimize while deciding).
+    /// so a single conflict surfaces the window exactly once.
     surfaced_conflict: Option<String>,
-    /// Tray menu item ids (set by Task 9 via `with_tray`).
-    tray_open_id: Option<tray_icon::menu::MenuId>,
-    tray_quit_id: Option<tray_icon::menu::MenuId>,
-    /// Kept alive so the tray icon is not dropped (set by Task 9).
-    _tray: Option<tray_icon::TrayIcon>,
 }
 
 impl SalvaeApp {
@@ -64,28 +57,12 @@ impl SalvaeApp {
             bot_logo: None,
             name_set: false,
             surfaced_conflict: None,
-            tray_open_id: None,
-            tray_quit_id: None,
-            _tray: None,
         }
     }
 
     /// Whether the user's display name was already set (skips the welcome gate).
     pub fn with_name_state(mut self, name_set: bool) -> Self {
         self.name_set = name_set;
-        self
-    }
-
-    /// Attach the tray icon + menu ids (called from Task 9).
-    pub fn with_tray(
-        mut self,
-        tray: tray_icon::TrayIcon,
-        open_id: tray_icon::menu::MenuId,
-        quit_id: tray_icon::menu::MenuId,
-    ) -> Self {
-        self._tray = Some(tray);
-        self.tray_open_id = Some(open_id);
-        self.tray_quit_id = Some(quit_id);
         self
     }
 
@@ -97,20 +74,6 @@ impl SalvaeApp {
     fn drain_events(&mut self) {
         while let Ok(ev) = self.rx.try_recv() {
             self.vm.apply(ev);
-        }
-    }
-
-    /// Handle tray menu clicks: show the window or quit.
-    fn poll_tray(&mut self, ctx: &egui::Context) {
-        while let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
-            if Some(&ev.id) == self.tray_open_id.as_ref() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
-            } else if Some(&ev.id) == self.tray_quit_id.as_ref() {
-                self.send(Command::Shutdown);
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-            }
         }
     }
 
@@ -930,22 +893,10 @@ fn label_for<T: IdName>(items: &[T], selected: Option<u64>, placeholder: &str) -
 impl eframe::App for SalvaeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
-        self.poll_tray(ctx);
 
-        // Keep the event loop ticking so tray menu clicks ("Abrir"/"Sair") are
-        // polled promptly while the window is minimized.
-        ctx.request_repaint_after(std::time::Duration::from_millis(200));
-
-        // Intercept the window close button: instead of quitting, minimize to
-        // the taskbar so the app keeps syncing in the background. We minimize
-        // (not hide) on purpose — a hidden window leaves no taskbar entry and
-        // can only be restored from the tray, and a hidden window stops getting
-        // repaints, which makes restoring it unreliable. Minimized keeps a
-        // taskbar button, so the user can always click it to come back.
-        if ctx.input(|i| i.viewport().close_requested()) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-        }
+        // Closing the window (X) quits the app. To keep syncing in the
+        // background, the user minimizes it (the worker thread keeps running
+        // regardless of the window).
 
         // First-run gate: ask for the user's name before anything else.
         if !self.name_set {
@@ -954,12 +905,12 @@ impl eframe::App for SalvaeApp {
             return;
         }
 
-        // A conflict is the core safety prompt: force the window visible once
-        // when a new one arrives, even if minimized to tray.
+        // A conflict is the core safety prompt: bring the window to the front
+        // once when a new one arrives (e.g. if it was minimized).
         match self.vm.pending_conflicts.first() {
             Some(c) if self.surfaced_conflict.as_deref() != Some(&c.game_id) => {
                 self.surfaced_conflict = Some(c.game_id.clone());
-                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             None => self.surfaced_conflict = None,

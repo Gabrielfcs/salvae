@@ -1,5 +1,5 @@
-//! Salvaê tray + desktop UI entry point: load the backend, spawn the worker
-//! thread, build the tray, and run the egui app.
+//! Salvaê desktop UI entry point: load the backend, spawn the worker thread,
+//! and run the egui app.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -12,7 +12,7 @@ use eframe::egui;
 use salvae_ui::agent_backend::AgentBackend;
 use salvae_ui::app::SalvaeApp;
 use salvae_ui::backend::Backend;
-use salvae_ui::{theme, tray, worker};
+use salvae_ui::{theme, worker};
 
 /// Per-user Salvaê app directory (`%AppData%\salvae`).
 fn app_dir() -> PathBuf {
@@ -85,15 +85,7 @@ fn main() -> eframe::Result<()> {
                 );
             });
 
-            // Build the tray on the main thread (Windows requirement).
             let app = SalvaeApp::new(cmd_tx, ev_rx).with_name_state(name_set);
-            let app = match tray::build() {
-                Ok(t) => app.with_tray(t.icon, t.open_id, t.quit_id),
-                Err(e) => {
-                    eprintln!("salvae-ui: tray unavailable ({e}); running without it");
-                    app
-                }
-            };
             Ok(Box::new(app))
         }),
     )
