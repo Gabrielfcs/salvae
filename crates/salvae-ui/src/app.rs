@@ -186,20 +186,59 @@ impl SalvaeApp {
             "O Salvaê guarda seus saves em um canal privado do Discord, acessado por um bot. \
              Você configura isso só uma vez por grupo.",
         );
-        ui.add_space(8.0);
+        ui.add_space(6.0);
         ui.hyperlink_to(
             "Abrir o Portal de Desenvolvedores do Discord ↗",
             "https://discord.com/developers/applications",
         );
+        ui.label(
+            egui::RichText::new("Se aparecer um questionário de boas-vindas, clique em \"Pular\".")
+                .color(theme::MUTED)
+                .small(),
+        );
         ui.add_space(8.0);
-        for line in [
-            "• Se aparecer um questionário de boas-vindas, clique em \"Pular\".",
-            "1. New Application → dê um nome (ex.: \"Salvaê\").",
-            "2. Abra a aba Bot → Reset Token → Copy.",
-            "3. Mantenha o token em segredo — é a chave do grupo para o canal.",
-        ] {
-            ui.label(egui::RichText::new(line).color(theme::MUTED));
-        }
+
+        ui.label(
+            egui::RichText::new("1. Clique em New Application e dê um nome (ex.: \"Salvaê\").")
+                .color(theme::MUTED),
+        );
+        portal_mock(ui, "New Application");
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new("2. Abra a aba Bot no menu lateral.").color(theme::MUTED));
+        portal_mock(ui, "Bot");
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new("3. Clique em Reset Token e depois em Copy.").color(theme::MUTED),
+        );
+        portal_mock(ui, "Reset Token");
+        ui.add_space(6.0);
+        ui.label(
+            egui::RichText::new("Mantenha o token em segredo — é a chave do grupo para o canal.")
+                .color(theme::MUTED)
+                .small(),
+        );
+
+        ui.add_space(8.0);
+        ui.label(
+            egui::RichText::new("Opcional — se não quiser personalizar, use os padrões do Salvaê:")
+                .color(theme::MUTED)
+                .small(),
+        );
+        ui.horizontal(|ui| {
+            if ui.button("Baixar ícone do bot…").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .set_file_name("salvae-bot.png")
+                    .add_filter("PNG", &["png"])
+                    .save_file()
+                {
+                    let _ = std::fs::write(path, crate::icon::bot_icon_png());
+                }
+            }
+            if ui.button("Copiar descrição").clicked() {
+                ui.output_mut(|o| o.copied_text = DEFAULT_BOT_DESCRIPTION.to_string());
+            }
+        });
+
         ui.add_space(10.0);
         ui.separator();
         ui.horizontal(|ui| {
@@ -616,6 +655,11 @@ fn modal_shield(ctx: &egui::Context) -> bool {
 /// Confirmation green (Tailwind green-500) for the "connected" check.
 const GREEN: egui::Color32 = egui::Color32::from_rgb(34, 197, 94);
 
+/// Default description offered for the bot (the user can paste it in the portal).
+const DEFAULT_BOT_DESCRIPTION: &str =
+    "Bot do Salvaê — sincroniza os saves de jogos co-op do nosso grupo por um \
+     canal privado e cifrado do Discord.";
+
 /// Minimal bot permissions for Salvaê: View Channel, Send Messages, Manage
 /// Messages (prune old versions), Read Message History, Attach Files.
 const BOT_PERMISSIONS: u64 = 1024 + 2048 + 8192 + 65536 + 32768;
@@ -625,6 +669,39 @@ fn bot_invite_url(bot_id: u64) -> String {
     format!(
         "https://discord.com/oauth2/authorize?client_id={bot_id}&scope=bot&permissions={BOT_PERMISSIONS}"
     )
+}
+
+/// Draw a tiny schematic "Developer Portal" mock with one highlighted control
+/// labelled with the button to click. Pure vector drawing — no image assets.
+fn portal_mock(ui: &mut egui::Ui, button_text: &str) {
+    let width = ui.available_width().min(380.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 46.0), egui::Sense::hover());
+    let painter = ui.painter();
+    let window_bg = egui::Color32::from_rgb(30, 31, 34);
+    let window_border = egui::Color32::from_rgb(50, 52, 58);
+    let blurple = egui::Color32::from_rgb(88, 101, 242);
+    let rounding = egui::Rounding::same(6.0);
+    painter.rect_filled(rect, rounding, window_bg);
+    painter.rect_stroke(rect, rounding, egui::Stroke::new(1.0, window_border));
+    // Window "title bar" dots.
+    for i in 0..3 {
+        let c = egui::pos2(rect.left() + 14.0 + i as f32 * 11.0, rect.top() + 11.0);
+        painter.circle_filled(c, 3.0, egui::Color32::from_rgb(70, 72, 78));
+    }
+    // The highlighted control the user should click (right-aligned).
+    let bw = 150.0;
+    let btn = egui::Rect::from_min_size(
+        egui::pos2(rect.right() - bw - 12.0, rect.center().y - 11.0),
+        egui::vec2(bw, 22.0),
+    );
+    painter.rect_filled(btn, egui::Rounding::same(4.0), blurple);
+    painter.text(
+        btn.center(),
+        egui::Align2::CENTER_CENTER,
+        button_text,
+        egui::FontId::proportional(12.0),
+        egui::Color32::WHITE,
+    );
 }
 
 /// A wizard step's heading + "Step N of 4" subtitle.

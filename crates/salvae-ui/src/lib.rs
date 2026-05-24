@@ -4,6 +4,7 @@
 pub mod backend;
 pub mod command;
 pub mod discovery;
+pub mod icon;
 pub mod view;
 pub mod viewmodel;
 pub mod worker;
