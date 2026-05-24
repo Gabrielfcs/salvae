@@ -205,15 +205,18 @@ impl SalvaeApp {
             for (n, text) in [
                 (
                     1,
-                    "Clique em New Application e dê um nome (ex.: \"Salvaê\").",
+                    "Clique em \"Novo aplicativo\", dê um nome (ex.: \"Salvaê\") e crie.",
                 ),
                 (
                     2,
                     "Defina o ícone e a descrição (opcional) e clique em \"Salvar alterações\" \
                      — se trocar de aba sem salvar, você perde essas mudanças.",
                 ),
-                (3, "Abra a aba Bot no menu lateral."),
-                (4, "Clique em Reset Token e depois em Copy."),
+                (3, "Abra a aba \"Bot\" no menu lateral."),
+                (
+                    4,
+                    "Clique em \"Redefinir token\", confirme, e copie o token que aparecer.",
+                ),
             ] {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(egui::RichText::new(format!("{n}.")).strong().color(GREEN));
