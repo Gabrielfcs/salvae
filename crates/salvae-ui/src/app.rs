@@ -929,6 +929,13 @@ impl eframe::App for SalvaeApp {
         self.drain_events();
         self.poll_tray(ctx);
 
+        // Keep the event loop ticking even while hidden in the tray. egui stops
+        // calling `update` once the window is invisible and idle, which would
+        // leave tray menu clicks ("Abrir"/"Sair") sitting unprocessed in the
+        // queue — making "Abrir" appear dead. A steady timed repaint lets
+        // `poll_tray` run a few times a second regardless of visibility.
+        ctx.request_repaint_after(std::time::Duration::from_millis(200));
+
         // Minimize-to-tray: intercept the window close button (always).
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
