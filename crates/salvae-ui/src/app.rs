@@ -681,7 +681,7 @@ impl SalvaeApp {
         let logo = self.bot_logo(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             // Roughly centre the fixed-width card vertically.
-            let top = ((ui.available_height() - 520.0) * 0.5).max(12.0);
+            let top = ((ui.available_height() - 520.0) * 0.32).max(12.0);
             ui.add_space(top);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(460.0);
