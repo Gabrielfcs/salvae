@@ -37,6 +37,11 @@ impl Detector {
         self.open_counts.contains_key(game_id)
     }
 
+    /// Whether any game currently has a process running.
+    pub fn any_open(&self) -> bool {
+        !self.open_counts.is_empty()
+    }
+
     /// Feed process events; return the resulting game events (in order).
     pub fn process(&mut self, events: &[ProcessEvent]) -> Vec<GameEvent> {
         let mut out = Vec::new();
@@ -164,6 +169,16 @@ mod tests {
                 game_id: "steam:892970".into()
             }]
         );
+    }
+
+    #[test]
+    fn any_open_reflects_running_games() {
+        let mut d = Detector::new(games());
+        assert!(!d.any_open());
+        d.process(&[started(10, "C:/Steam/common/Valheim/valheim.exe")]);
+        assert!(d.any_open());
+        d.process(&[stopped(10, "C:/Steam/common/Valheim/valheim.exe")]);
+        assert!(!d.any_open());
     }
 
     #[test]

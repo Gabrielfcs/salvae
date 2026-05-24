@@ -172,6 +172,12 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         Ok(applied)
     }
 
+    /// Whether any configured game is currently running (used to defer
+    /// disruptive background work like a silent self-update).
+    pub fn any_game_open(&self) -> bool {
+        self.detector.any_open()
+    }
+
     /// Resolve a pending conflict for `game_id` with the user's choice.
     pub fn handle_resolve(
         &mut self,
@@ -627,6 +633,25 @@ mod tests {
             agent.restore("steam:999", 1, 100).unwrap(),
             AgentOutcome::NotConfigured
         );
+    }
+
+    #[test]
+    fn any_game_open_tracks_tick_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let frames = vec![vec![salvae_watch::process::ProcessInfo {
+            pid: 9,
+            exe_path: "C:/Steam/common/Valheim/valheim.exe".into(),
+        }]];
+        let mut agent = agent_for(
+            InMemoryChannel::new(),
+            &dir.path().join("save"),
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            frames,
+        );
+        assert!(!agent.any_game_open());
+        agent.tick(10).unwrap(); // Valheim launches
+        assert!(agent.any_game_open());
     }
 
     #[test]
