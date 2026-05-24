@@ -105,6 +105,50 @@ pub fn enumerate(steam_root: &Path) -> Result<Vec<InstalledGame>, DetectError> {
     Ok(games)
 }
 
+/// Locate the Steam install directory: the Windows registry first, then the
+/// common default paths. `None` if Steam can't be found.
+pub fn steam_root() -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    if let Some(path) = steam_root_from_registry() {
+        return Some(path);
+    }
+    for candidate in [r"C:\Program Files (x86)\Steam", r"C:\Program Files\Steam"] {
+        let path = std::path::PathBuf::from(candidate);
+        if path.is_dir() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Read Steam's install path from the registry (works regardless of which
+/// drive/folder Steam was installed to).
+#[cfg(windows)]
+fn steam_root_from_registry() -> Option<std::path::PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(key) = hkcu.open_subkey(r"Software\Valve\Steam") {
+        if let Ok(path) = key.get_value::<String, _>("SteamPath") {
+            let path = std::path::PathBuf::from(path.replace('/', "\\"));
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+    }
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    if let Ok(key) = hklm.open_subkey(r"SOFTWARE\WOW6432Node\Valve\Steam") {
+        if let Ok(path) = key.get_value::<String, _>("InstallPath") {
+            let path = std::path::PathBuf::from(path);
+            if path.is_dir() {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

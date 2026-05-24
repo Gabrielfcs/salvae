@@ -117,8 +117,8 @@ fn to_version_view(v: &SaveVersion) -> VersionView {
 /// binary).
 fn enumerate_games() -> Vec<InstalledGame> {
     let mut games = Vec::new();
-    let steam_root = PathBuf::from(r"C:\Program Files (x86)\Steam");
-    if steam_root.exists() {
+    // Find Steam via the registry (any drive/folder), not a hardcoded path.
+    if let Some(steam_root) = steam::steam_root() {
         if let Ok(s) = steam::enumerate(&steam_root) {
             games.extend(s);
         }
