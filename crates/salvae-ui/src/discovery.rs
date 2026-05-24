@@ -52,14 +52,17 @@ pub fn collect(
     Ok(candidates)
 }
 
-/// Turn a candidate's top-level folder name into an absolute path under `root`.
-/// `rank` uses `"."` for files written directly into the root.
+/// Turn a candidate's (possibly nested, `/`-separated) folder into an absolute
+/// path under `root`. `rank` uses `"."` for files written directly into the
+/// root.
 fn abs_folder(root: &Path, folder: &str) -> PathBuf {
-    if folder == "." {
-        root.to_path_buf()
-    } else {
-        root.join(folder)
+    let mut path = root.to_path_buf();
+    if folder != "." {
+        for component in folder.split('/') {
+            path.push(component);
+        }
     }
+    path
 }
 
 #[cfg(test)]

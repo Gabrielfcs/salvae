@@ -15,39 +15,82 @@ pub struct Candidate {
     pub score: i64,
 }
 
+/// Top-level folders that almost never hold game saves — they show up only
+/// because lots of apps write under `%LocalAppData%`. Filtered out (unless the
+/// folder name actually matches the game).
+const NOISE: &[&str] = &[
+    "nvidia",
+    "nvidiacorporation",
+    "microsoft",
+    "temp",
+    "tempstate",
+    "asus",
+    "packages",
+    "crashdumps",
+    "d3dscache",
+    "google",
+    "mozilla",
+    "comms",
+    "connecteddevicesplatform",
+    "powertoys",
+    "diagnostics",
+    "programs",
+];
+
 /// Rank candidate save folders from changed relative paths + the game name.
-/// Returns candidates sorted by descending score.
+///
+/// For each changed file, the candidate folder is the path **up to and
+/// including the deepest component that matches the game name** (e.g.
+/// `DDTNL/Supermarket Together`), or the top-level folder if nothing matches.
+/// Name-matching folders score highest; obvious noise is dropped. Returns
+/// candidates sorted by descending score.
 pub fn rank(changed: &[String], game_name: &str) -> Vec<Candidate> {
     let needle = normalize(game_name);
 
     let mut by_folder: BTreeMap<String, usize> = BTreeMap::new();
     for path in changed {
-        let folder = path
-            .split('/')
-            .next()
-            .filter(|_| path.contains('/'))
-            .unwrap_or(".");
-        *by_folder.entry(folder.to_string()).or_insert(0) += 1;
+        let comps: Vec<&str> = path.split('/').collect();
+        // Directory components (drop the file name).
+        let dirs = &comps[..comps.len().saturating_sub(1)];
+        *by_folder.entry(candidate_key(dirs, &needle)).or_insert(0) += 1;
     }
 
     let mut candidates: Vec<Candidate> = by_folder
         .into_iter()
-        .map(|(folder, changed_files)| {
-            let name_bonus = if folder != "." && name_matches(&needle, &normalize(&folder)) {
-                100
-            } else {
-                0
-            };
-            Candidate {
+        .filter_map(|(folder, changed_files)| {
+            let first = folder.split('/').next().unwrap_or("");
+            let last = folder.rsplit('/').next().unwrap_or("");
+            let name_match = folder != "." && name_matches(&needle, &normalize(last));
+            // Drop obvious noise unless the folder itself matches the game.
+            if !name_match && NOISE.contains(&normalize(first).as_str()) {
+                return None;
+            }
+            let score = if name_match { 100 } else { 0 } + changed_files as i64;
+            Some(Candidate {
                 folder,
                 changed_files,
-                score: name_bonus + changed_files as i64,
-            }
+                score,
+            })
         })
         .collect();
 
     candidates.sort_by(|a, b| b.score.cmp(&a.score).then(a.folder.cmp(&b.folder)));
     candidates
+}
+
+/// The candidate folder for one file's directory components: the path up to and
+/// including the deepest component that matches the game name, else the
+/// top-level folder (`"."` for a file directly under the root).
+fn candidate_key(dirs: &[&str], needle: &str) -> String {
+    if dirs.is_empty() {
+        return ".".to_string();
+    }
+    for (i, comp) in dirs.iter().enumerate() {
+        if name_matches(needle, &normalize(comp)) {
+            return dirs[..=i].join("/");
+        }
+    }
+    dirs[0].to_string()
 }
 
 /// Lowercase and strip non-alphanumeric characters for fuzzy name comparison.
@@ -97,5 +140,23 @@ mod tests {
     #[test]
     fn empty_diff_yields_no_candidates() {
         assert!(rank(&[], "Game").is_empty());
+    }
+
+    #[test]
+    fn drills_into_studio_game_subfolder_and_drops_noise() {
+        let changed = vec![
+            "DDTNL/Supermarket Together/save.es3".to_string(),
+            "DDTNL/Supermarket Together/settings.cfg".to_string(),
+            "NVIDIA/GLCache/abc.bin".to_string(),
+            "Microsoft/Edge/cache.dat".to_string(),
+        ];
+        let ranked = rank(&changed, "Supermarket Together");
+        // Best candidate is the studio/game folder, not just "DDTNL".
+        assert_eq!(ranked[0].folder, "DDTNL/Supermarket Together");
+        assert_eq!(ranked[0].changed_files, 2);
+        // Noise top-level folders are filtered out.
+        assert!(ranked
+            .iter()
+            .all(|c| c.folder != "NVIDIA" && c.folder != "Microsoft"));
     }
 }
