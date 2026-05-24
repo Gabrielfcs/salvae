@@ -137,12 +137,20 @@ impl SalvaeApp {
         if self.vm.groups.is_empty() {
             ui.label(egui::RichText::new("Nenhum grupo ainda.").color(theme::MUTED));
         }
-        for g in &self.vm.groups {
-            let selected = self.forms.selected_group.as_deref() == Some(&g.id);
-            if ui.selectable_label(selected, &g.name).clicked() {
-                self.forms.selected_group = Some(g.id.clone());
+        let groups: Vec<(String, String)> = self
+            .vm
+            .groups
+            .iter()
+            .map(|g| (g.id.clone(), g.name.clone()))
+            .collect();
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+            for (id, name) in &groups {
+                let selected = self.forms.selected_group.as_deref() == Some(id.as_str());
+                if ui.selectable_label(selected, name).clicked() {
+                    self.forms.selected_group = Some(id.clone());
+                }
             }
-        }
+        });
 
         if let Some(invite) = self.vm.last_invite.clone() {
             ui.add_space(8.0);
@@ -559,6 +567,7 @@ impl SalvaeApp {
                 let enabled = mapping.is_some();
                 let unresolved = self.vm.unresolved.contains(&game.id);
                 theme::card_frame().show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.strong(&game.name);
                         ui.label(egui::RichText::new(format!("({})", game.id)).color(theme::MUTED));

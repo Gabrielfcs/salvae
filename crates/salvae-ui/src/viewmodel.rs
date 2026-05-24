@@ -42,15 +42,19 @@ impl ViewModel {
     /// Fold one worker event into the render state.
     pub fn apply(&mut self, event: Event) {
         match event {
-            Event::Groups(g) => {
+            Event::Groups(mut g) => {
                 // A game that now has a configured folder is no longer unresolved.
                 self.unresolved.retain(|id| {
                     !g.iter()
                         .any(|grp| grp.games.iter().any(|m| &m.game_id == id))
                 });
+                g.sort_by_key(|x| x.name.to_lowercase());
                 self.groups = g;
             }
-            Event::InstalledGames(g) => self.installed_games = g,
+            Event::InstalledGames(mut g) => {
+                g.sort_by_key(|x| x.name.to_lowercase());
+                self.installed_games = g;
+            }
             Event::TokenValidated { bot_id, bot_name } => {
                 self.token_validated = true;
                 self.bot_id = Some(bot_id);
