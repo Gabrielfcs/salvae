@@ -7,6 +7,11 @@ use crate::view::{ChannelView, GameView, GroupView, GuildView, VersionView};
 /// Everything the background worker can ask of the backend. All fallible calls
 /// return `Result<_, String>` — the error string is shown verbatim in the UI.
 pub trait Backend {
+    /// The user's display name (author of their saves); empty until set.
+    fn display_name(&self) -> String;
+    /// Set the user's display name (used as the save author).
+    fn set_display_name(&mut self, name: &str) -> Result<(), String>;
+
     /// Current groups (with their configured game→folder mappings).
     fn refresh_groups(&self) -> Vec<GroupView>;
     /// Games discovered on this machine.

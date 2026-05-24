@@ -42,6 +42,9 @@ impl GroupConfig {
 pub struct AppConfig {
     /// Stable per-install device id (used by the sync engine for authorship).
     pub device_id: String,
+    /// Human display name shown as the author of saves this person pushes.
+    #[serde(default)]
+    pub display_name: String,
     /// All groups this install belongs to.
     #[serde(default)]
     pub groups: Vec<GroupConfig>,
@@ -54,6 +57,7 @@ mod tests {
     fn sample() -> AppConfig {
         AppConfig {
             device_id: "dev-abc".into(),
+            display_name: "Gabriel".into(),
             groups: vec![GroupConfig {
                 id: "g1".into(),
                 name: "Co-op Crew".into(),

@@ -20,6 +20,17 @@ impl<S: SecretStore> ConfigStore<S> {
         &self.config.device_id
     }
 
+    /// The user's display name (author of their saves). Empty until set.
+    pub fn display_name(&self) -> &str {
+        &self.config.display_name
+    }
+
+    /// Set the user's display name and persist.
+    pub fn set_display_name(&mut self, name: &str) -> Result<(), ConfigError> {
+        self.config.display_name = name.to_string();
+        self.save()
+    }
+
     /// All groups this install belongs to.
     pub fn groups(&self) -> &[GroupConfig] {
         &self.config.groups
@@ -36,6 +47,7 @@ impl<S: SecretStore> ConfigStore<S> {
         } else {
             AppConfig {
                 device_id: random_id(16),
+                display_name: String::new(),
                 groups: Vec::new(),
             }
         };

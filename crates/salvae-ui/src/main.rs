@@ -11,6 +11,7 @@ use eframe::egui;
 
 use salvae_ui::agent_backend::AgentBackend;
 use salvae_ui::app::SalvaeApp;
+use salvae_ui::backend::Backend;
 use salvae_ui::{theme, tray, worker};
 
 /// Per-user Salvaê app directory (`%AppData%\salvae`).
@@ -68,6 +69,9 @@ fn main() -> eframe::Result<()> {
             theme::apply(&cc.egui_ctx);
             egui_extras::install_image_loaders(&cc.egui_ctx);
 
+            // Read the name state before the worker takes ownership of backend.
+            let name_set = !backend.display_name().is_empty();
+
             // Spawn the worker thread, waking the UI via the egui context.
             let ctx = cc.egui_ctx.clone();
             let ev_tx_worker = ev_tx;
@@ -82,8 +86,7 @@ fn main() -> eframe::Result<()> {
             });
 
             // Build the tray on the main thread (Windows requirement).
-            let app =
-                SalvaeApp::new(cmd_tx, ev_rx).with_consent(app_dir().join("consent-accepted"));
+            let app = SalvaeApp::new(cmd_tx, ev_rx).with_name_state(name_set);
             let app = match tray::build() {
                 Ok(t) => app.with_tray(t.icon, t.open_id, t.quit_id),
                 Err(e) => {

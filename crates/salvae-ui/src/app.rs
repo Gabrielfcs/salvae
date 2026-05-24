@@ -1,7 +1,6 @@
 //! The egui application: renders the ViewModel and turns user input into
 //! Commands. Drains worker Events each frame and minimizes to tray on close.
 
-use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 
 use eframe::egui;
@@ -15,6 +14,7 @@ use crate::viewmodel::ViewModel;
 #[derive(Default)]
 struct Forms {
     selected_group: Option<String>,
+    name_input: String,
     show_create: bool,
     show_join: bool,
     show_token: bool,
@@ -39,10 +39,8 @@ pub struct SalvaeApp {
     forms: Forms,
     /// Lazily-loaded mascot logo texture for the welcome screen.
     bot_logo: Option<egui::TextureHandle>,
-    /// Whether the first-run consent screen has been accepted.
-    consent_accepted: bool,
-    /// Marker file written when consent is accepted (gates the app on first run).
-    consent_path: Option<PathBuf>,
+    /// Whether the user's display name is set (gates the app on first run).
+    name_set: bool,
     /// The game id of the conflict we have already forced the window open for,
     /// so a single conflict surfaces the window exactly once (the user can
     /// re-minimize while deciding).
@@ -62,8 +60,7 @@ impl SalvaeApp {
             rx,
             forms: Forms::default(),
             bot_logo: None,
-            consent_accepted: false,
-            consent_path: None,
+            name_set: false,
             surfaced_conflict: None,
             tray_open_id: None,
             tray_quit_id: None,
@@ -71,11 +68,9 @@ impl SalvaeApp {
         }
     }
 
-    /// Gate the app behind a first-run consent screen, persisting acceptance to
-    /// `path` (already accepted if the marker file exists).
-    pub fn with_consent(mut self, path: PathBuf) -> Self {
-        self.consent_accepted = path.exists();
-        self.consent_path = Some(path);
+    /// Whether the user's display name was already set (skips the welcome gate).
+    pub fn with_name_state(mut self, name_set: bool) -> Self {
+        self.name_set = name_set;
         self
     }
 
@@ -755,17 +750,18 @@ impl SalvaeApp {
             .clone()
     }
 
-    /// First-run welcome screen. Shown once; "Entrar" dismisses it for good.
-    fn consent_screen(&mut self, ctx: &egui::Context) {
+    /// First-run welcome screen: explains the app and asks for the user's name
+    /// (the author of their saves). Shown until a name is set.
+    fn welcome_screen(&mut self, ctx: &egui::Context) {
         let logo = self.bot_logo(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             // Roughly centre the fixed-width card vertically.
-            let top = ((ui.available_height() - 560.0) * 0.32).max(12.0);
+            let top = ((ui.available_height() - 620.0) * 0.3).max(12.0);
             ui.add_space(top);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(460.0);
 
-                ui.image((logo.id(), egui::vec2(200.0, 200.0)));
+                ui.image((logo.id(), egui::vec2(180.0, 180.0)));
                 ui.add_space(6.0);
                 ui.heading("Bem-vindo ao Salvaê");
                 ui.add_space(10.0);
@@ -789,28 +785,37 @@ impl SalvaeApp {
                         ui.add_space(4.0);
                     }
                 });
-                ui.add_space(16.0);
+                ui.add_space(14.0);
+
+                ui.label("Seu nome (aparece como autor dos seus saves)");
+                ui.add_space(2.0);
+                let name = ui.add(
+                    egui::TextEdit::singleline(&mut self.forms.name_input)
+                        .desired_width(260.0)
+                        .hint_text("ex.: Gabriel"),
+                );
+                ui.add_space(12.0);
+
+                let ready = !self.forms.name_input.trim().is_empty();
                 let enter = icon(
                     egui::include_image!("../assets/icons/arrow-right.svg"),
                     20.0,
                     egui::Color32::WHITE,
                 );
-                if theme::primary_icon_button(ui, enter).clicked() {
-                    self.accept_consent();
+                let submit = ui
+                    .add_enabled_ui(ready, |ui| theme::primary_icon_button(ui, enter).clicked())
+                    .inner;
+                // Enter key on the field also submits.
+                let pressed_enter =
+                    name.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && ready;
+                if submit || pressed_enter {
+                    self.send(Command::SetName {
+                        name: self.forms.name_input.trim().to_string(),
+                    });
+                    self.name_set = true;
                 }
             });
         });
-    }
-
-    /// Record that the welcome screen was seen (marker file) so it shows once.
-    fn accept_consent(&mut self) {
-        self.consent_accepted = true;
-        if let Some(path) = self.consent_path.clone() {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(path, b"accepted");
-        }
     }
 
     fn activity_panel(&self, ui: &mut egui::Ui) {
@@ -930,9 +935,9 @@ impl eframe::App for SalvaeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
-        // First-run consent gate: nothing else is shown until accepted.
-        if !self.consent_accepted {
-            self.consent_screen(ctx);
+        // First-run gate: ask for the user's name before anything else.
+        if !self.name_set {
+            self.welcome_screen(ctx);
             ctx.request_repaint_after(std::time::Duration::from_millis(250));
             return;
         }

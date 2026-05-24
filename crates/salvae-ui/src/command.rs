@@ -7,6 +7,10 @@ use crate::view::{ActivityView, ChannelView, GameView, GroupView, GuildView, Ver
 pub enum Command {
     /// Re-read groups + installed games.
     Refresh,
+    /// Set the user's display name (author of their saves).
+    SetName {
+        name: String,
+    },
     CreateGroup {
         name: String,
         password: String,

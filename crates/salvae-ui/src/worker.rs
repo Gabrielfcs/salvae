@@ -16,6 +16,12 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             Event::Groups(backend.refresh_groups()),
             Event::InstalledGames(backend.installed_games()),
         ],
+        Command::SetName { name } => match backend.set_display_name(&name) {
+            Ok(()) => vec![Event::Activity(ActivityView::info(format!(
+                "Nome definido: {name}"
+            )))],
+            Err(e) => vec![Event::Error(e)],
+        },
         Command::CreateGroup {
             name,
             password,
@@ -173,6 +179,12 @@ mod tests {
     }
 
     impl Backend for FakeBackend {
+        fn display_name(&self) -> String {
+            String::new()
+        }
+        fn set_display_name(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
         fn refresh_groups(&self) -> Vec<GroupView> {
             self.groups.clone()
         }

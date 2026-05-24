@@ -145,6 +145,13 @@ fn build_groups(
     app_dir: &Path,
 ) -> Result<Vec<GroupRuntime<DiscordChannel>>, String> {
     let device_id = store.device_id().to_string();
+    // Saves are authored under the user's display name (falling back to the
+    // device id if it hasn't been set yet).
+    let member = if store.display_name().is_empty() {
+        device_id.clone()
+    } else {
+        store.display_name().to_string()
+    };
     let backups_dir = app_dir.join("backups");
     let mut groups = Vec::new();
     for group in store.groups() {
@@ -155,7 +162,7 @@ fn build_groups(
         let engine = SyncEngine::new(
             channel,
             secret.key,
-            device_id.clone(),
+            member.clone(),
             device_id.clone(),
             group.max_versions,
             backups_dir.clone(),
@@ -179,6 +186,17 @@ fn build_agent(
 }
 
 impl Backend for AgentBackend {
+    fn display_name(&self) -> String {
+        self.store.display_name().to_string()
+    }
+
+    fn set_display_name(&mut self, name: &str) -> Result<(), String> {
+        self.store
+            .set_display_name(name)
+            .map_err(|e| e.to_string())?;
+        self.rebuild_agent()
+    }
+
     fn refresh_groups(&self) -> Vec<GroupView> {
         self.store
             .groups()
@@ -381,9 +399,19 @@ impl Backend for AgentBackend {
                     pull,
                     others_playing,
                 } => {
-                    events.push(Event::Activity(ActivityView::info(format!(
-                        "{name} aberto — baixou a versão mais recente ({pull:?})"
-                    ))));
+                    let msg = match pull {
+                        salvae_sync::engine::PullOutcome::Applied(v) => format!(
+                            "{name} aberto — baixou a versão {} (salva por {})",
+                            v.number, v.author
+                        ),
+                        salvae_sync::engine::PullOutcome::AlreadyUpToDate(n) => {
+                            format!("{name} aberto — já estava na versão {n}")
+                        }
+                        salvae_sync::engine::PullOutcome::NoRemoteSave => {
+                            format!("{name} aberto — ainda não há save no grupo")
+                        }
+                    };
+                    events.push(Event::Activity(ActivityView::info(msg)));
                     if !others_playing.is_empty() {
                         events.push(Event::Activity(ActivityView::warning(format!(
                             "Também jogando {name} agora: {}",
