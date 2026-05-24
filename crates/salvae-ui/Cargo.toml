@@ -6,6 +6,11 @@ license.workspace = true
 authors.workspace = true
 description = "Tray app + desktop UI for Salvaê: group setup, save-folder config, conflict resolution, history/restore."
 
+# The shippable binary is named "Salvae" (produces Salvae.exe).
+[[bin]]
+name = "Salvae"
+path = "src/main.rs"
+
 [dependencies]
 salvae-core = { path = "../salvae-core" }
 salvae-config = { path = "../salvae-config" }
