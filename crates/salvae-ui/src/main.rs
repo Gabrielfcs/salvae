@@ -36,7 +36,25 @@ fn load_window_icon() -> egui::IconData {
     }
 }
 
+/// Hold a named mutex so the installer (Inno Setup `AppMutex=Salvae`) can detect
+/// and close this running instance during a silent update. The handle is
+/// intentionally never closed — it lives until the process exits, which is
+/// exactly when the installer needs it gone.
+#[cfg(windows)]
+fn hold_app_mutex() {
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    let name: Vec<u16> = "Salvae\0".encode_utf16().collect();
+    // SAFETY: standard CreateMutexW call — null security attributes, no initial
+    // owner; the returned handle is deliberately leaked for the process lifetime.
+    unsafe {
+        let _ = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
+    }
+}
+
 fn main() -> eframe::Result<()> {
+    #[cfg(windows)]
+    hold_app_mutex();
+
     let backend = match AgentBackend::load(app_dir()) {
         Ok(b) => b,
         Err(e) => {
