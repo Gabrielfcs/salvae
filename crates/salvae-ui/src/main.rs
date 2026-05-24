@@ -67,7 +67,8 @@ fn main() -> eframe::Result<()> {
             });
 
             // Build the tray on the main thread (Windows requirement).
-            let app = SalvaeApp::new(cmd_tx, ev_rx);
+            let app =
+                SalvaeApp::new(cmd_tx, ev_rx).with_consent(app_dir().join("consent-accepted"));
             let app = match tray::build() {
                 Ok(t) => app.with_tray(t.icon, t.open_id, t.quit_id),
                 Err(e) => {

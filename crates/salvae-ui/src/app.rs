@@ -1,6 +1,7 @@
 //! The egui application: renders the ViewModel and turns user input into
 //! Commands. Drains worker Events each frame and minimizes to tray on close.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
 
 use eframe::egui;
@@ -34,6 +35,10 @@ pub struct SalvaeApp {
     tx: Sender<Command>,
     rx: Receiver<Event>,
     forms: Forms,
+    /// Whether the first-run consent screen has been accepted.
+    consent_accepted: bool,
+    /// Marker file written when consent is accepted (gates the app on first run).
+    consent_path: Option<PathBuf>,
     /// The game id of the conflict we have already forced the window open for,
     /// so a single conflict surfaces the window exactly once (the user can
     /// re-minimize while deciding).
@@ -52,11 +57,21 @@ impl SalvaeApp {
             tx,
             rx,
             forms: Forms::default(),
+            consent_accepted: false,
+            consent_path: None,
             surfaced_conflict: None,
             tray_open_id: None,
             tray_quit_id: None,
             _tray: None,
         }
+    }
+
+    /// Gate the app behind a first-run consent screen, persisting acceptance to
+    /// `path` (already accepted if the marker file exists).
+    pub fn with_consent(mut self, path: PathBuf) -> Self {
+        self.consent_accepted = path.exists();
+        self.consent_path = Some(path);
+        self
     }
 
     /// Attach the tray icon + menu ids (called from Task 9).
@@ -637,6 +652,56 @@ impl SalvaeApp {
             });
     }
 
+    /// First-run consent / transparency screen. Gates the app until accepted.
+    fn consent_screen(&mut self, ctx: &egui::Context) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.add_space(20.0);
+            ui.vertical_centered(|ui| ui.heading("Bem-vindo ao Salvaê"));
+            ui.add_space(10.0);
+            ui.label(
+                "O Salvaê sincroniza os saves de jogos co-op do seu grupo por um canal \
+                 privado e cifrado do Discord. Para isso, ele precisa:",
+            );
+            ui.add_space(10.0);
+            theme::card_frame().show(ui, |ui| {
+                for line in [
+                    "• Detectar quando seus jogos abrem e fecham (lendo a lista de processos).",
+                    "• Ler e gravar apenas as pastas de save que você escolher.",
+                    "• Enviar os saves (cifrados) ao canal do Discord do seu grupo, pela internet.",
+                    "• Guardar segredos (token e chave) protegidos pela DPAPI do Windows.",
+                ] {
+                    ui.label(line);
+                    ui.add_space(4.0);
+                }
+            });
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new(
+                    "O Salvaê só mexe nos jogos que você configurar, e nada é enviado sem a \
+                     senha do grupo.",
+                )
+                .color(theme::MUTED)
+                .small(),
+            );
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if theme::primary_button(ui, "Aceitar e continuar").clicked() {
+                    self.consent_accepted = true;
+                    if let Some(path) = self.consent_path.clone() {
+                        if let Some(parent) = path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let _ = std::fs::write(path, b"accepted");
+                    }
+                }
+                if ui.button("Sair").clicked() {
+                    self.send(Command::Shutdown);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
+        });
+    }
+
     fn activity_panel(&self, ui: &mut egui::Ui) {
         ui.heading("Atividade");
         egui::ScrollArea::vertical()
@@ -741,6 +806,19 @@ impl eframe::App for SalvaeApp {
         self.drain_events();
         self.poll_tray(ctx);
 
+        // Minimize-to-tray: intercept the window close button (always).
+        if ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+
+        // First-run consent gate: nothing else is shown until accepted.
+        if !self.consent_accepted {
+            self.consent_screen(ctx);
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+            return;
+        }
+
         // A conflict is the core safety prompt: force the window visible once
         // when a new one arrives, even if minimized to tray.
         match self.vm.pending_conflicts.first() {
@@ -751,12 +829,6 @@ impl eframe::App for SalvaeApp {
             }
             None => self.surfaced_conflict = None,
             _ => {}
-        }
-
-        // Minimize-to-tray: intercept the window close button.
-        if ctx.input(|i| i.viewport().close_requested()) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
 
         if let Some(err) = self.vm.last_error.clone() {
