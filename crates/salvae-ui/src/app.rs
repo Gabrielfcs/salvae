@@ -659,8 +659,12 @@ impl SalvaeApp {
     fn bot_logo(&mut self, ctx: &egui::Context) -> egui::TextureHandle {
         self.bot_logo
             .get_or_insert_with(|| {
+                // High-quality CPU downscale (Lanczos3) so it stays crisp when
+                // drawn small — egui has no mipmaps, so a raw 1254px→200px GPU
+                // minification would alias badly.
                 let img = image::load_from_memory(crate::icon::bot_logo_png())
                     .expect("decode logo")
+                    .resize(400, 400, image::imageops::FilterType::Lanczos3)
                     .to_rgba8();
                 let (w, h) = img.dimensions();
                 let color = egui::ColorImage::from_rgba_unmultiplied(
@@ -677,12 +681,12 @@ impl SalvaeApp {
         let logo = self.bot_logo(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             // Roughly centre the fixed-width card vertically.
-            let top = ((ui.available_height() - 440.0) * 0.5).max(12.0);
+            let top = ((ui.available_height() - 520.0) * 0.5).max(12.0);
             ui.add_space(top);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(460.0);
 
-                ui.image((logo.id(), egui::vec2(120.0, 120.0)));
+                ui.image((logo.id(), egui::vec2(200.0, 200.0)));
                 ui.add_space(6.0);
                 ui.heading("Bem-vindo ao Salvaê");
                 ui.add_space(10.0);
