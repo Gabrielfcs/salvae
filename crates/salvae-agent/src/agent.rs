@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use salvae_config::group::GroupConfig;
 use salvae_core::version::SaveVersion;
-use salvae_sync::engine::{PushOutcome, Resolution, SyncEngine};
+use salvae_sync::engine::{PullOutcome, PushOutcome, Resolution, SyncEngine};
 use salvae_vault::channel::Channel;
 use salvae_watch::detector::{Detector, GameEvent};
 use salvae_watch::process::{ProcessLister, Watcher};
@@ -123,6 +123,36 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
             results.push((event, outcome));
         }
         Ok(results)
+    }
+
+    /// Poll the channel for newer saves of every configured game and pull the
+    /// ones that advanced — so a member receives a teammate's save without
+    /// having to launch the game. Games currently running are skipped (a live
+    /// pull would clobber the save the player is actively writing). Returns the
+    /// `(game_id, outcome)` for each game whose save was actually applied.
+    pub fn poll_remote(&mut self, now_ms: u64) -> Result<Vec<(String, PullOutcome)>, AgentError> {
+        let mut applied = Vec::new();
+        for rt in &mut self.groups {
+            // Snapshot (game_id, folder) so the immutable borrow of the config
+            // ends before we pull through the engine (mutable borrow of `rt`).
+            let configured: Vec<(String, PathBuf)> = rt
+                .config
+                .game_paths
+                .iter()
+                .map(|(id, path)| (id.clone(), PathBuf::from(path)))
+                .collect();
+            for (game_id, folder) in configured {
+                if self.detector.is_open(&game_id) {
+                    continue;
+                }
+                let outcome = rt.engine.pull(&game_id, &folder, now_ms)?;
+                if matches!(outcome, PullOutcome::Applied(_)) {
+                    save_state(rt)?;
+                    applied.push((game_id, outcome));
+                }
+            }
+        }
+        Ok(applied)
     }
 
     /// Resolve a pending conflict for `game_id` with the user's choice.
@@ -434,6 +464,65 @@ mod tests {
             std::fs::read(folder.join("world.db")).unwrap(),
             b"remote save"
         );
+    }
+
+    #[test]
+    fn poll_remote_pulls_a_teammates_save_without_opening_the_game() {
+        use salvae_sync::engine::PullOutcome;
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"teammate save");
+
+        // No process frames -> the game is never detected as running.
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            vec![],
+        );
+
+        let pulled = agent.poll_remote(100).unwrap();
+        assert_eq!(pulled.len(), 1);
+        assert_eq!(pulled[0].0, "steam:1");
+        assert!(matches!(pulled[0].1, PullOutcome::Applied(ref v) if v.number == 1));
+        assert_eq!(
+            std::fs::read(folder.join("world.db")).unwrap(),
+            b"teammate save"
+        );
+
+        // Polling again is a no-op (already up to date), so nothing is reported.
+        assert!(agent.poll_remote(200).unwrap().is_empty());
+    }
+
+    #[test]
+    fn poll_remote_skips_a_currently_running_game() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+
+        let channel = InMemoryChannel::new();
+        seed_remote(&channel, b"remote save");
+
+        // One frame that launches the game so the detector marks it open.
+        let frames = vec![vec![salvae_watch::process::ProcessInfo {
+            pid: 9,
+            exe_path: "C:/Steam/common/Valheim/valheim.exe".into(),
+        }]];
+        let mut agent = agent_for(
+            channel,
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            frames,
+        );
+
+        // Tick consumes the frame -> game is now open (and pulled on open).
+        agent.tick(50).unwrap();
+        // While it's open, the background poll must not touch its folder again.
+        assert!(agent.poll_remote(100).unwrap().is_empty());
     }
 
     #[test]

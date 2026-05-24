@@ -32,6 +32,11 @@ impl Detector {
         }
     }
 
+    /// Whether `game_id` currently has at least one process running.
+    pub fn is_open(&self, game_id: &str) -> bool {
+        self.open_counts.contains_key(game_id)
+    }
+
     /// Feed process events; return the resulting game events (in order).
     pub fn process(&mut self, events: &[ProcessEvent]) -> Vec<GameEvent> {
         let mut out = Vec::new();
@@ -114,6 +119,16 @@ mod tests {
                 game_id: "steam:892970".into()
             }]
         );
+    }
+
+    #[test]
+    fn is_open_tracks_running_state() {
+        let mut d = Detector::new(games());
+        assert!(!d.is_open("steam:892970"));
+        d.process(&[started(10, "C:/Steam/common/Valheim/valheim.exe")]);
+        assert!(d.is_open("steam:892970"));
+        d.process(&[stopped(10, "C:/Steam/common/Valheim/valheim.exe")]);
+        assert!(!d.is_open("steam:892970"));
     }
 
     #[test]

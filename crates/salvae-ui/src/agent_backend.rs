@@ -30,6 +30,10 @@ use crate::view::{
 
 type DiscordAgent = Agent<DiscordChannel, SystemProcessLister>;
 
+/// How often (ms) to poll the channel for teammates' new saves, independent of
+/// game open/close. Kept coarse so the background sync stays light.
+const REMOTE_POLL_INTERVAL_MS: u64 = 20_000;
+
 /// Production backend.
 pub struct AgentBackend {
     store: ConfigStore<DpapiSecretStore>,
@@ -37,6 +41,8 @@ pub struct AgentBackend {
     agent: DiscordAgent,
     app_dir: PathBuf,
     manifest: Manifest,
+    /// Timestamp (ms) of the last background channel poll (0 = never).
+    last_remote_poll_ms: u64,
 }
 
 impl AgentBackend {
@@ -53,6 +59,7 @@ impl AgentBackend {
             agent,
             app_dir,
             manifest: Manifest::embedded(),
+            last_remote_poll_ms: 0,
         })
     }
 
@@ -443,6 +450,28 @@ impl Backend for AgentBackend {
                 ))),
             }
         }
+
+        // Background sync: on a coarse interval, pull teammates' new saves for
+        // games that aren't currently running — no need to open the game.
+        if now.saturating_sub(self.last_remote_poll_ms) >= REMOTE_POLL_INTERVAL_MS {
+            self.last_remote_poll_ms = now;
+            match self.agent.poll_remote(now) {
+                Ok(pulled) => {
+                    for (game_id, outcome) in pulled {
+                        if let salvae_sync::engine::PullOutcome::Applied(v) = outcome {
+                            let name = self.game_name(&game_id);
+                            events.push(Event::Activity(ActivityView::info(format!(
+                                "{name} — baixou a versão {} do grupo (salva por {})",
+                                v.number, v.author
+                            ))));
+                            events.push(Event::Groups(self.refresh_groups()));
+                        }
+                    }
+                }
+                Err(e) => events.push(Event::Error(friendly_sync_error(&e.to_string()))),
+            }
+        }
+
         events
     }
 }
