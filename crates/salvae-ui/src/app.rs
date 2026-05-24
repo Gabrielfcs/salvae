@@ -186,9 +186,13 @@ impl SalvaeApp {
             "O Salvaê guarda seus saves em um canal privado do Discord, acessado por um bot. \
              Você configura isso só uma vez por grupo.",
         );
-        ui.add_space(6.0);
+        ui.add_space(14.0);
+
+        // Instructions section.
+        ui.label(egui::RichText::new("No Portal de Desenvolvedores do Discord").strong());
+        ui.add_space(2.0);
         ui.hyperlink_to(
-            "Abrir o Portal de Desenvolvedores do Discord ↗",
+            "Abrir o portal ↗",
             "https://discord.com/developers/applications",
         );
         ui.label(
@@ -197,27 +201,40 @@ impl SalvaeApp {
                 .small(),
         );
         ui.add_space(8.0);
+        theme::card_frame().show(ui, |ui| {
+            for (n, text) in [
+                (
+                    1,
+                    "Clique em New Application e dê um nome (ex.: \"Salvaê\").",
+                ),
+                (2, "Abra a aba Bot no menu lateral."),
+                (3, "Clique em Reset Token e depois em Copy."),
+            ] {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(format!("{n}.")).strong().color(GREEN));
+                    ui.label(text);
+                });
+                ui.add_space(6.0);
+            }
+            ui.label(
+                egui::RichText::new("Mantenha o token em segredo — é a chave do grupo.")
+                    .color(theme::MUTED)
+                    .small(),
+            );
+        });
 
-        for line in [
-            "1. Clique em New Application e dê um nome (ex.: \"Salvaê\").",
-            "2. Abra a aba Bot no menu lateral.",
-            "3. Clique em Reset Token e depois em Copy.",
-        ] {
-            ui.label(egui::RichText::new(line).color(theme::MUTED));
-        }
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new("Mantenha o token em segredo — é a chave do grupo para o canal.")
-                .color(theme::MUTED)
-                .small(),
-        );
-
+        ui.add_space(14.0);
+        ui.separator();
         ui.add_space(8.0);
+
+        // Optional defaults section.
+        ui.label(egui::RichText::new("Opcional — padrões do Salvaê").strong());
         ui.label(
-            egui::RichText::new("Opcional — se não quiser personalizar, use os padrões do Salvaê:")
+            egui::RichText::new("Use se não quiser personalizar o bot.")
                 .color(theme::MUTED)
                 .small(),
         );
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             if ui.button("Baixar ícone do bot…").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
@@ -233,8 +250,9 @@ impl SalvaeApp {
             }
         });
 
-        ui.add_space(10.0);
+        ui.add_space(14.0);
         ui.separator();
+        ui.add_space(8.0);
         ui.horizontal(|ui| {
             if theme::primary_button(ui, "Avançar").clicked() {
                 self.forms.create_step = 1;
