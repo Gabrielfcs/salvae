@@ -1,5 +1,7 @@
 //! The egui application: renders the ViewModel and turns user input into
-//! Commands. Drains worker Events each frame and minimizes to tray on close.
+//! Commands. Drains worker Events each frame and minimizes to the taskbar on
+//! close (the sync keeps running on the worker thread; restore via the taskbar
+//! or the tray).
 
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -103,6 +105,7 @@ impl SalvaeApp {
         while let Ok(ev) = tray_icon::menu::MenuEvent::receiver().try_recv() {
             if Some(&ev.id) == self.tray_open_id.as_ref() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             } else if Some(&ev.id) == self.tray_quit_id.as_ref() {
                 self.send(Command::Shutdown);
@@ -929,17 +932,19 @@ impl eframe::App for SalvaeApp {
         self.drain_events();
         self.poll_tray(ctx);
 
-        // Keep the event loop ticking even while hidden in the tray. egui stops
-        // calling `update` once the window is invisible and idle, which would
-        // leave tray menu clicks ("Abrir"/"Sair") sitting unprocessed in the
-        // queue — making "Abrir" appear dead. A steady timed repaint lets
-        // `poll_tray` run a few times a second regardless of visibility.
+        // Keep the event loop ticking so tray menu clicks ("Abrir"/"Sair") are
+        // polled promptly while the window is minimized.
         ctx.request_repaint_after(std::time::Duration::from_millis(200));
 
-        // Minimize-to-tray: intercept the window close button (always).
+        // Intercept the window close button: instead of quitting, minimize to
+        // the taskbar so the app keeps syncing in the background. We minimize
+        // (not hide) on purpose — a hidden window leaves no taskbar entry and
+        // can only be restored from the tray, and a hidden window stops getting
+        // repaints, which makes restoring it unreliable. Minimized keeps a
+        // taskbar button, so the user can always click it to come back.
         if ctx.input(|i| i.viewport().close_requested()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
         }
 
         // First-run gate: ask for the user's name before anything else.
