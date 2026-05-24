@@ -42,9 +42,18 @@ impl PlayingRecord {
     /// Recover a record from a message's content, or `None` if it is not a
     /// Salvaê playing marker (no Seed line, not ours, or wrong marker).
     pub fn decode(content: &str, key: &[u8; 32]) -> Option<PlayingRecord> {
-        let token = seed::seed_from_message(content)?;
-        let bytes = seed::open_from_token(key, token)?;
-        let rec: PlayingRecord = serde_json::from_slice(&bytes).ok()?;
+        // Current format: an encrypted `Seed:` token.
+        if let Some(token) = seed::seed_from_message(content) {
+            if let Some(bytes) = seed::open_from_token(key, token) {
+                if let Ok(rec) = serde_json::from_slice::<PlayingRecord>(&bytes) {
+                    if rec.marker == PLAYING_MARKER {
+                        return Some(rec);
+                    }
+                }
+            }
+        }
+        // Backward compatibility: older clients posted the marker as raw JSON.
+        let rec: PlayingRecord = serde_json::from_str(content).ok()?;
         (rec.marker == PLAYING_MARKER).then_some(rec)
     }
 

@@ -47,9 +47,18 @@ impl VersionRecord {
     /// Recover a record from a message's content, or `None` if it is not a
     /// Salvaê save-version message (no Seed line, not ours, or wrong marker).
     pub fn decode(content: &str, key: &[u8; 32]) -> Option<VersionRecord> {
-        let token = seed::seed_from_message(content)?;
-        let bytes = seed::open_from_token(key, token)?;
-        let rec: VersionRecord = serde_json::from_slice(&bytes).ok()?;
+        // Current format: an encrypted `Seed:` token.
+        if let Some(token) = seed::seed_from_message(content) {
+            if let Some(bytes) = seed::open_from_token(key, token) {
+                if let Ok(rec) = serde_json::from_slice::<VersionRecord>(&bytes) {
+                    if rec.marker == MARKER {
+                        return Some(rec);
+                    }
+                }
+            }
+        }
+        // Backward compatibility: older clients posted the record as raw JSON.
+        let rec: VersionRecord = serde_json::from_str(content).ok()?;
         (rec.marker == MARKER).then_some(rec)
     }
 }
@@ -99,6 +108,14 @@ mod tests {
     fn decode_rejects_non_salvae_content() {
         assert!(VersionRecord::decode("just a normal chat message", &KEY).is_none());
         assert!(VersionRecord::decode("Seed: not-base64!!", &KEY).is_none());
+    }
+
+    #[test]
+    fn decode_still_reads_legacy_raw_json() {
+        // Messages posted by older clients stored the record as plain JSON.
+        let rec = sample();
+        let legacy = serde_json::to_string(&rec).unwrap();
+        assert_eq!(VersionRecord::decode(&legacy, &KEY).unwrap(), rec);
     }
 
     #[test]
