@@ -43,6 +43,20 @@ pub fn encode_invite(
     channel_id: u64,
 ) -> Result<String, ConfigError> {
     let key = kdf::derive_key(password, salt)?;
+    encode_invite_with_key(&key, salt, name, token, guild_id, channel_id)
+}
+
+/// Build an invite from the already-derived group `key` (and its `salt`),
+/// without needing the password again. Used to re-share an existing group's
+/// invite, since the store keeps the derived key, not the password.
+pub fn encode_invite_with_key(
+    key: &[u8; KEY_LEN],
+    salt: &[u8; SALT_LEN],
+    name: &str,
+    token: &str,
+    guild_id: u64,
+    channel_id: u64,
+) -> Result<String, ConfigError> {
     let payload = InvitePayload {
         name: name.to_string(),
         token: token.to_string(),
@@ -51,7 +65,7 @@ pub fn encode_invite(
     };
     let payload_bytes =
         serde_json::to_vec(&payload).map_err(|e| ConfigError::Serde(e.to_string()))?;
-    let ciphertext = cipher::encrypt(&key, &payload_bytes)?;
+    let ciphertext = cipher::encrypt(key, &payload_bytes)?;
 
     let mut blob = Vec::with_capacity(SALT_LEN + ciphertext.len());
     blob.extend_from_slice(salt);

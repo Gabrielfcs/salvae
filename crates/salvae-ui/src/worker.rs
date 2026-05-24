@@ -60,6 +60,16 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             Ok(()) => vec![Event::Groups(backend.refresh_groups())],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::ShowInvite { group_id } => match backend.group_invite(&group_id) {
+            Ok(invite) => vec![Event::Invite(invite)],
+            Err(e) => vec![Event::Error(e)],
+        },
+        Command::ResendInvite { group_id } => match backend.resend_invite(&group_id) {
+            Ok(()) => vec![Event::Activity(ActivityView::info(
+                "Convite reenviado no canal do Discord",
+            ))],
+            Err(e) => vec![Event::Error(e)],
+        },
         Command::SetGroupToken { group_id, token } => {
             match backend.set_group_token(&group_id, &token) {
                 Ok(()) => vec![Event::Activity(ActivityView::info(
@@ -222,6 +232,12 @@ mod tests {
             Ok(())
         }
         fn remove_group(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn group_invite(&self, _: &str) -> Result<String, String> {
+            Ok("invite-blob".into())
+        }
+        fn resend_invite(&self, _: &str) -> Result<(), String> {
             Ok(())
         }
         fn set_group_token(&mut self, _: &str, _: &str) -> Result<(), String> {

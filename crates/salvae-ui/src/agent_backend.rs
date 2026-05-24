@@ -106,6 +106,14 @@ fn friendly_sync_error(raw: &str) -> String {
     }
 }
 
+/// The Discord message used to share a group's invite in its channel.
+fn invite_message(name: &str, invite: &str) -> String {
+    format!(
+        "**Convite do Salvaê para \"{name}\"**\nCole no app (menu \"Entrar em grupo\") \
+         + a senha do grupo (combinada por fora):\n```\n{invite}\n```"
+    )
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -289,11 +297,8 @@ impl Backend for AgentBackend {
         self.rebuild_agent()?;
         // Best-effort: post the invite into the channel so members can grab it
         // from Discord (they still need the password, shared out-of-band).
-        let message = format!(
-            "**Convite do Salvaê para \"{name}\"**\nCole no app (menu \"Entrar em grupo\") \
-             + a senha do grupo (combinada por fora):\n```\n{invite}\n```"
-        );
-        let _ = DiscordChannel::new(token, channel_id).create_message(&message, &[]);
+        let _ = DiscordChannel::new(token, channel_id)
+            .create_message(&invite_message(name, &invite), &[]);
         Ok(invite)
     }
 
@@ -321,6 +326,32 @@ impl Backend for AgentBackend {
             .remove_group(group_id)
             .map_err(|e| e.to_string())?;
         self.rebuild_agent()
+    }
+
+    fn group_invite(&self, group_id: &str) -> Result<String, String> {
+        self.store.group_invite(group_id).map_err(|e| e.to_string())
+    }
+
+    fn resend_invite(&self, group_id: &str) -> Result<(), String> {
+        let invite = self
+            .store
+            .group_invite(group_id)
+            .map_err(|e| e.to_string())?;
+        let group = self
+            .store
+            .groups()
+            .iter()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| format!("Grupo não encontrado: {group_id}"))?
+            .clone();
+        let secret = self
+            .store
+            .group_secret(group_id)
+            .map_err(|e| e.to_string())?;
+        DiscordChannel::new(secret.token, group.channel_id)
+            .create_message(&invite_message(&group.name, &invite), &[])
+            .map_err(|e| friendly_sync_error(&e.to_string()))?;
+        Ok(())
     }
 
     fn set_group_token(&mut self, group_id: &str, token: &str) -> Result<(), String> {

@@ -140,6 +140,33 @@ impl<S: SecretStore> ConfigStore<S> {
             .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))
     }
 
+    /// Rebuild the shareable invite for an existing group, from its stored salt,
+    /// token and derived key — no password needed. Used to re-share or copy a
+    /// group's invite after creation.
+    pub fn group_invite(&self, group_id: &str) -> Result<String, ConfigError> {
+        let group = self
+            .config
+            .groups
+            .iter()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))?;
+        let secret = self.group_secret(group_id)?;
+        let salt_bytes =
+            hex::decode(&group.salt).map_err(|e| ConfigError::Invite(format!("bad salt: {e}")))?;
+        let salt: [u8; salvae_core::kdf::SALT_LEN] = salt_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| ConfigError::Invite("salt has wrong length".into()))?;
+        invite::encode_invite_with_key(
+            &secret.key,
+            &salt,
+            &group.name,
+            &secret.token,
+            group.guild_id,
+            group.channel_id,
+        )
+    }
+
     /// Remove a group and its secret, then persist.
     pub fn remove_group(&mut self, group_id: &str) -> Result<(), ConfigError> {
         self.config.groups.retain(|g| g.id != group_id);
@@ -253,6 +280,38 @@ mod tests {
         assert_eq!(decoded.token, "bot-token");
         assert_eq!(decoded.guild_id, 111);
         assert_eq!(decoded.key, secret.key);
+    }
+
+    #[test]
+    fn group_invite_rebuilds_a_working_invite_without_the_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let mut store = ConfigStore::load_or_default(&path, InMemorySecretStore::new()).unwrap();
+
+        let (group, original) = store
+            .create_group("Crew", "pw123", "bot-token", 111, 222)
+            .unwrap();
+
+        // Re-shared invite (built from stored key/salt, no password) decodes with
+        // the same password back to the same group info.
+        let reshared = store.group_invite(&group.id).unwrap();
+        let decoded = crate::invite::decode_invite("pw123", &reshared).unwrap();
+        assert_eq!(decoded.name, "Crew");
+        assert_eq!(decoded.token, "bot-token");
+        assert_eq!(decoded.guild_id, 111);
+        assert_eq!(decoded.channel_id, 222);
+        assert_eq!(decoded.key, store.group_secret(&group.id).unwrap().key);
+
+        // The original create-time invite also still decodes the same.
+        assert_eq!(
+            crate::invite::decode_invite("pw123", &original)
+                .unwrap()
+                .key,
+            decoded.key
+        );
+
+        // An unknown group id errors.
+        assert!(store.group_invite("nope").is_err());
     }
 
     #[test]

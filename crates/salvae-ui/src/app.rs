@@ -552,6 +552,16 @@ impl SalvaeApp {
 
         ui.heading(format!("{} — jogos", group.name));
         ui.horizontal(|ui| {
+            if ui.button("Reenviar no Discord").clicked() {
+                self.send(Command::ResendInvite {
+                    group_id: group_id.clone(),
+                });
+            }
+            if ui.button("Mostrar convite").clicked() {
+                self.send(Command::ShowInvite {
+                    group_id: group_id.clone(),
+                });
+            }
             if ui.button("Atualizar token").clicked() {
                 self.forms.token_input.clear();
                 self.forms.show_token = true;

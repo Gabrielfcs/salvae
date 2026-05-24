@@ -38,6 +38,14 @@ pub enum Command {
     RemoveGroup {
         group_id: String,
     },
+    /// Rebuild a group's invite and surface it for copying.
+    ShowInvite {
+        group_id: String,
+    },
+    /// Re-post a group's invite into its Discord channel via the bot.
+    ResendInvite {
+        group_id: String,
+    },
     /// Replace a group's bot token (after resetting it in the portal).
     SetGroupToken {
         group_id: String,
