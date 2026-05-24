@@ -681,7 +681,7 @@ impl SalvaeApp {
         let logo = self.bot_logo(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             // Roughly centre the fixed-width card vertically.
-            let top = ((ui.available_height() - 520.0) * 0.32).max(12.0);
+            let top = ((ui.available_height() - 560.0) * 0.32).max(12.0);
             ui.add_space(top);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(460.0);
@@ -699,7 +699,8 @@ impl SalvaeApp {
                     for line in [
                         "Sincroniza automaticamente ao abrir e fechar o jogo.",
                         "Baixa o save mais recente do grupo e envia o seu depois de jogar.",
-                        "Funciona pelo Discord do seu grupo, de forma segura.",
+                        "Sem servidor próprio: tudo passa direto pelo Discord do seu grupo.",
+                        "Seguro e código aberto: saves cifrados e tudo auditável (open-source).",
                         "Você escolhe quais jogos participam.",
                     ] {
                         ui.horizontal_wrapped(|ui| {
