@@ -787,12 +787,12 @@ impl SalvaeApp {
                 });
                 ui.add_space(14.0);
 
-                ui.label("Seu nome");
+                ui.label("Qual o seu nome?");
                 ui.add_space(2.0);
                 let name = ui.add(
                     egui::TextEdit::singleline(&mut self.forms.name_input)
                         .desired_width(260.0)
-                        .hint_text("ex.: Gabriel"),
+                        .hint_text("Nome"),
                 );
                 ui.add_space(12.0);
 
