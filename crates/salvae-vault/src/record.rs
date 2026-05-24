@@ -1,12 +1,15 @@
-//! Version record: the JSON header stored in a save-version message.
+//! Version record: the machine metadata carried by a save-version message.
 //!
-//! Each save version is one channel message whose `content` is a `VersionRecord`
-//! serialized as JSON (small — well under Discord's 2000-char content limit),
-//! and whose attachments are the sealed save split into `chunk_i.bin` parts.
+//! Each save version is one channel message. Its visible content is a friendly
+//! human line plus an encrypted `Seed:` token (the record below, sealed with the
+//! group key and base64-encoded), and its attachments are the sealed save split
+//! into `chunk_i.bin` parts. The friendly line keeps the channel readable; the
+//! Seed keeps the metadata private to members and out of sight.
 
 use serde::{Deserialize, Serialize};
 
 use salvae_core::version::SaveVersion;
+use salvae_core::{seed, CoreError};
 
 /// Marker string identifying a message as a Salvaê save version (so the vault
 /// can ignore unrelated messages in the channel).
@@ -24,22 +27,30 @@ pub struct VersionRecord {
 }
 
 impl VersionRecord {
-    /// Serialize to the JSON string stored as a message's content.
-    pub fn to_content(&self) -> String {
-        // Serialization of this small, owned struct cannot fail in practice;
-        // fall back to an empty object only to avoid a panic.
-        serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string())
+    /// Build the channel message: a friendly line naming the author and game,
+    /// followed by the encrypted `Seed:` token carrying this record. `game_name`
+    /// is the human title to show (falls back to the id if empty).
+    pub fn encode(&self, key: &[u8; 32], game_name: &str) -> Result<String, CoreError> {
+        let json = serde_json::to_string(self).unwrap_or_else(|_| "{}".to_string());
+        let token = seed::seal_to_token(key, json.as_bytes())?;
+        let title = if game_name.is_empty() {
+            &self.game_id
+        } else {
+            game_name
+        };
+        Ok(format!(
+            "{} acaba de emitir uma sincronização dos saves do jogo: {}\n\nSeed: {}",
+            self.version.author, title, token
+        ))
     }
 
-    /// Parse a message's content into a record, or `None` if it is not a
-    /// Salvaê save-version message (unrelated text, bad JSON, or wrong marker).
-    pub fn parse(content: &str) -> Option<VersionRecord> {
-        let rec: VersionRecord = serde_json::from_str(content).ok()?;
-        if rec.marker == MARKER {
-            Some(rec)
-        } else {
-            None
-        }
+    /// Recover a record from a message's content, or `None` if it is not a
+    /// Salvaê save-version message (no Seed line, not ours, or wrong marker).
+    pub fn decode(content: &str, key: &[u8; 32]) -> Option<VersionRecord> {
+        let token = seed::seed_from_message(content)?;
+        let bytes = seed::open_from_token(key, token)?;
+        let rec: VersionRecord = serde_json::from_slice(&bytes).ok()?;
+        (rec.marker == MARKER).then_some(rec)
     }
 }
 
@@ -63,32 +74,42 @@ mod tests {
         }
     }
 
+    const KEY: [u8; 32] = [9u8; 32];
+
     #[test]
-    fn to_content_then_parse_round_trips() {
+    fn encode_then_decode_round_trips() {
         let rec = sample();
-        let content = rec.to_content();
-        let back = VersionRecord::parse(&content).unwrap();
+        let content = rec.encode(&KEY, "Valheim").unwrap();
+        let back = VersionRecord::decode(&content, &KEY).unwrap();
         assert_eq!(rec, back);
     }
 
     #[test]
-    fn parse_rejects_non_salvae_content() {
-        assert!(VersionRecord::parse("just a normal chat message").is_none());
-        // Valid JSON but wrong/absent marker:
-        assert!(VersionRecord::parse("{\"hello\":1}").is_none());
+    fn encoded_message_is_friendly_and_hides_the_json() {
+        let content = sample().encode(&KEY, "Valheim").unwrap();
+        assert!(content
+            .starts_with("Gabriel acaba de emitir uma sincronização dos saves do jogo: Valheim"));
+        assert!(content.contains("Seed:"));
+        // The raw metadata must not leak into the visible text.
+        assert!(!content.contains("salvae-save-v1"));
+        assert!(!content.contains("content_hash"));
     }
 
     #[test]
-    fn parse_rejects_wrong_marker_value() {
-        let mut rec = sample();
-        rec.marker = "something-else".into();
-        let content = serde_json::to_string(&rec).unwrap();
-        assert!(VersionRecord::parse(&content).is_none());
+    fn decode_rejects_non_salvae_content() {
+        assert!(VersionRecord::decode("just a normal chat message", &KEY).is_none());
+        assert!(VersionRecord::decode("Seed: not-base64!!", &KEY).is_none());
+    }
+
+    #[test]
+    fn decode_rejects_a_token_sealed_with_another_key() {
+        let content = sample().encode(&KEY, "Valheim").unwrap();
+        assert!(VersionRecord::decode(&content, &[0u8; 32]).is_none());
     }
 
     #[test]
     fn content_is_small() {
-        // Sanity: a record stays well under Discord's 2000-char message limit.
-        assert!(sample().to_content().len() < 2000);
+        // Sanity: a message stays well under Discord's 2000-char content limit.
+        assert!(sample().encode(&KEY, "Valheim").unwrap().len() < 2000);
     }
 }

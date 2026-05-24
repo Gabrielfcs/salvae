@@ -31,7 +31,7 @@ fn coop_session_round_trip_and_conflict() {
         owner_backups.path(),
     );
     assert!(matches!(
-        owner.push("valheim", owner_save.path(), 1_000).unwrap(),
+        owner.push("valheim", "valheim", owner_save.path(), 1_000).unwrap(),
         PushOutcome::Pushed(v) if v.number == 1
     ));
 
@@ -49,11 +49,11 @@ fn coop_session_round_trip_and_conflict() {
     );
 
     // Friend plays (marker), advances the save, pushes v2, stops.
-    friend.begin_playing("valheim", 2_000).unwrap();
+    friend.begin_playing("valheim", "valheim", 2_000).unwrap();
     assert_eq!(owner.who_is_playing("valheim", 2_000).unwrap().len(), 1);
     write(friend_save.path(), "world.db", b"day 2 progress");
     assert!(matches!(
-        friend.push("valheim", friend_save.path(), 2_500).unwrap(),
+        friend.push("valheim", "valheim", friend_save.path(), 2_500).unwrap(),
         PushOutcome::Pushed(v) if v.number == 2
     ));
     friend.end_playing("valheim").unwrap();
@@ -61,12 +61,20 @@ fn coop_session_round_trip_and_conflict() {
 
     // --- Owner (still on v1) edits and tries to push -> CONFLICT. ---
     write(owner_save.path(), "world.db", b"owner diverged");
-    let conflict = owner.push("valheim", owner_save.path(), 3_000).unwrap();
+    let conflict = owner
+        .push("valheim", "valheim", owner_save.path(), 3_000)
+        .unwrap();
     assert!(matches!(conflict, PushOutcome::Conflict { remote } if remote.number == 2));
 
     // Owner takes the remote: local now holds the friend's day-2 save.
     let resolved = owner
-        .resolve("valheim", owner_save.path(), Resolution::TakeRemote, 3_100)
+        .resolve(
+            "valheim",
+            "valheim",
+            owner_save.path(),
+            Resolution::TakeRemote,
+            3_100,
+        )
         .unwrap();
     assert!(matches!(resolved, PushOutcome::NoChange(2)));
     assert_eq!(

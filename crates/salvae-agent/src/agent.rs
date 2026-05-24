@@ -1,5 +1,6 @@
 //! Agent orchestration: resolve a game to its group, drive sync on open/close.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use salvae_config::group::GroupConfig;
@@ -35,6 +36,8 @@ pub struct Agent<C: Channel, L: ProcessLister> {
     watcher: Watcher<L>,
     detector: Detector,
     groups: Vec<GroupRuntime<C>>,
+    /// game id -> human title, for friendly channel messages.
+    game_names: BTreeMap<String, String>,
 }
 
 impl<C: Channel, L: ProcessLister> Agent<C, L> {
@@ -43,7 +46,19 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
             watcher,
             detector,
             groups,
+            game_names: BTreeMap::new(),
         }
+    }
+
+    /// Set the game id -> display name map used to label channel messages.
+    pub fn set_game_names(&mut self, names: BTreeMap<String, String>) {
+        self.game_names = names;
+    }
+
+    /// The human title for `game_id` (empty if unknown; callers fall back to the
+    /// id when building messages).
+    fn game_title(&self, game_id: &str) -> String {
+        self.game_names.get(game_id).cloned().unwrap_or_default()
     }
 
     /// Replace the per-group runtimes (e.g. after a config change), keeping the
@@ -70,6 +85,7 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
     /// Handle a game opening: pull the latest save into its folder and post a
     /// "currently playing" marker. Returns who else is already playing.
     pub fn handle_open(&mut self, game_id: &str, now_ms: u64) -> Result<AgentOutcome, AgentError> {
+        let title = self.game_title(game_id);
         let Some((rt, folder)) = self.resolve(game_id) else {
             return Ok(AgentOutcome::NotConfigured);
         };
@@ -80,7 +96,7 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
             .map(|r| r.member)
             .collect();
         let pull = rt.engine.pull(game_id, &folder, now_ms)?;
-        rt.engine.begin_playing(game_id, now_ms)?;
+        rt.engine.begin_playing(game_id, &title, now_ms)?;
         save_state(rt)?;
         Ok(AgentOutcome::Opened {
             pull,
@@ -91,6 +107,7 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
     /// Handle a game closing: remove our "playing" marker and push the local
     /// save (which may surface a conflict for the UI to resolve).
     pub fn handle_close(&mut self, game_id: &str, now_ms: u64) -> Result<AgentOutcome, AgentError> {
+        let title = self.game_title(game_id);
         let Some((rt, folder)) = self.resolve(game_id) else {
             return Ok(AgentOutcome::NotConfigured);
         };
@@ -100,7 +117,7 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         if !folder.exists() {
             return Ok(AgentOutcome::NoFolder);
         }
-        let push = rt.engine.push(game_id, &folder, now_ms)?;
+        let push = rt.engine.push(game_id, &title, &folder, now_ms)?;
         // A conflict didn't advance our synced version, so only persist when the
         // push actually changed state.
         if !matches!(push, PushOutcome::Conflict { .. }) {
@@ -162,10 +179,13 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         resolution: Resolution,
         now_ms: u64,
     ) -> Result<AgentOutcome, AgentError> {
+        let title = self.game_title(game_id);
         let Some((rt, folder)) = self.resolve(game_id) else {
             return Ok(AgentOutcome::NotConfigured);
         };
-        let push = rt.engine.resolve(game_id, &folder, resolution, now_ms)?;
+        let push = rt
+            .engine
+            .resolve(game_id, &title, &folder, resolution, now_ms)?;
         save_state(rt)?;
         Ok(AgentOutcome::Closed { push })
     }
@@ -288,7 +308,7 @@ mod tests {
         write(dir.path(), "world.db", bytes);
         let packed = salvae_sync::pack::pack_folder(dir.path()).unwrap();
         Vault::new(channel, [9u8; 32])
-            .push_version("steam:1", &packed, "seed", "seed-dev", 1, 5)
+            .push_version("steam:1", "Valheim", &packed, "seed", "seed-dev", 1, 5)
             .unwrap();
     }
 

@@ -8,6 +8,7 @@ pub mod compress;
 pub mod hash;
 pub mod kdf;
 pub mod seal;
+pub mod seed;
 pub mod version;
 
 /// Errors produced by salvae-core operations.

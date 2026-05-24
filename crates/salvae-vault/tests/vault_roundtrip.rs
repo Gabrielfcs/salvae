@@ -21,13 +21,13 @@ fn coop_save_lifecycle_over_in_memory_channel() {
     let s3 = b"valheim world: day 3, killed first boss".to_vec();
 
     let v1 = vault
-        .push_version("valheim", &s1, "Gabriel", "pc-gabriel", 1_000, 5)
+        .push_version("valheim", "valheim", &s1, "Gabriel", "pc-gabriel", 1_000, 5)
         .unwrap();
     let v2 = vault
-        .push_version("valheim", &s2, "Ana", "pc-ana", 2_000, 5)
+        .push_version("valheim", "valheim", &s2, "Ana", "pc-ana", 2_000, 5)
         .unwrap();
     let v3 = vault
-        .push_version("valheim", &s3, "Gabriel", "pc-gabriel", 3_000, 5)
+        .push_version("valheim", "valheim", &s3, "Gabriel", "pc-gabriel", 3_000, 5)
         .unwrap();
     assert_eq!((v1.number, v2.number, v3.number), (1, 2, 3));
 
@@ -50,7 +50,7 @@ fn pruning_bounds_history_and_keeps_newest() {
     for day in 1..=6u64 {
         let save = format!("save for day {day}").into_bytes();
         vault
-            .push_version("terraria", &save, "p", "d", day, 3)
+            .push_version("terraria", "terraria", &save, "p", "d", day, 3)
             .unwrap();
     }
 
@@ -77,7 +77,7 @@ fn wrong_group_password_cannot_open_saves() {
 
     let channel = InMemoryChannel::new();
     Vault::new(&channel, right)
-        .push_version("valheim", b"top secret save", "a", "d", 1, 5)
+        .push_version("valheim", "valheim", b"top secret save", "a", "d", 1, 5)
         .unwrap();
 
     let intruder = Vault::new(&channel, wrong);

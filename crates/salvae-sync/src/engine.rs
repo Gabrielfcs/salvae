@@ -147,6 +147,7 @@ impl<C: Channel> SyncEngine<C> {
     pub fn push(
         &mut self,
         game_id: &str,
+        game_name: &str,
         save_folder: &Path,
         now_ms: u64,
     ) -> Result<PushOutcome, SyncError> {
@@ -155,13 +156,13 @@ impl<C: Channel> SyncEngine<C> {
         let latest = self.vault().latest_version(game_id)?;
 
         match latest {
-            None => self.do_push(game_id, &packed, now_ms),
+            None => self.do_push(game_id, game_name, &packed, now_ms),
             Some(latest) if latest.content_hash == local_hash => {
                 self.state.set(game_id, latest.number);
                 Ok(PushOutcome::NoChange(latest.number))
             }
             Some(latest) if self.state.get(game_id) == Some(latest.number) => {
-                self.do_push(game_id, &packed, now_ms)
+                self.do_push(game_id, game_name, &packed, now_ms)
             }
             Some(latest) => Ok(PushOutcome::Conflict { remote: latest }),
         }
@@ -171,11 +172,13 @@ impl<C: Channel> SyncEngine<C> {
     fn do_push(
         &mut self,
         game_id: &str,
+        game_name: &str,
         packed: &[u8],
         now_ms: u64,
     ) -> Result<PushOutcome, SyncError> {
         let version = self.vault().push_version(
             game_id,
+            game_name,
             packed,
             &self.member,
             &self.device_id,
@@ -191,6 +194,7 @@ impl<C: Channel> SyncEngine<C> {
     pub fn resolve(
         &mut self,
         game_id: &str,
+        game_name: &str,
         save_folder: &Path,
         resolution: Resolution,
         now_ms: u64,
@@ -205,7 +209,7 @@ impl<C: Channel> SyncEngine<C> {
                         return Ok(PushOutcome::NoChange(latest.number));
                     }
                 }
-                self.do_push(game_id, &packed, now_ms)
+                self.do_push(game_id, game_name, &packed, now_ms)
             }
             Resolution::TakeRemote => {
                 let Some(latest) = self.vault().latest_version(game_id)? else {
@@ -245,7 +249,12 @@ impl<C: Channel> SyncEngine<C> {
     }
 
     /// Post a "currently playing" marker for `game_id` (expires after the TTL).
-    pub fn begin_playing(&self, game_id: &str, now_ms: u64) -> Result<(), SyncError> {
+    pub fn begin_playing(
+        &self,
+        game_id: &str,
+        game_name: &str,
+        now_ms: u64,
+    ) -> Result<(), SyncError> {
         let record = PlayingRecord {
             marker: PLAYING_MARKER.to_string(),
             game_id: game_id.to_string(),
@@ -253,7 +262,8 @@ impl<C: Channel> SyncEngine<C> {
             device_id: self.device_id.clone(),
             expires_at_ms: now_ms + PLAYING_TTL_MS,
         };
-        self.channel.send_message(&record.to_content(), &[])?;
+        self.channel
+            .send_message(&record.encode(&self.key, game_name)?, &[])?;
         Ok(())
     }
 
@@ -273,7 +283,7 @@ impl<C: Channel> SyncEngine<C> {
             before = page.last().map(|m| m.id);
             let full = page.len() == SCAN_PAGE as usize;
             for msg in page {
-                if let Some(rec) = PlayingRecord::parse(&msg.content) {
+                if let Some(rec) = PlayingRecord::decode(&msg.content, &self.key) {
                     if rec.game_id == game_id
                         && rec.device_id != self.device_id
                         && rec.is_active(now_ms)
@@ -301,7 +311,7 @@ impl<C: Channel> SyncEngine<C> {
             let full = page.len() == SCAN_PAGE as usize;
             let mut to_delete = Vec::new();
             for msg in &page {
-                if let Some(rec) = PlayingRecord::parse(&msg.content) {
+                if let Some(rec) = PlayingRecord::decode(&msg.content, &self.key) {
                     if rec.game_id == game_id && rec.device_id == self.device_id {
                         to_delete.push(msg.id);
                     }
@@ -391,7 +401,7 @@ mod tests {
         write(src.path(), "world.db", b"day 3");
         let packed = pack::pack_folder(src.path()).unwrap();
         Vault::new(&channel, [1u8; 32])
-            .push_version("valheim", &packed, "owner", "dev-owner", 100, 5)
+            .push_version("valheim", "valheim", &packed, "owner", "dev-owner", 100, 5)
             .unwrap();
 
         let mut engine = SyncEngine::new(&channel, [1u8; 32], "me", "dev-1", 5, backups.path());
@@ -421,7 +431,15 @@ mod tests {
         write(src.path(), "world.db", b"remote");
         let packed = pack::pack_folder(src.path()).unwrap();
         Vault::new(&channel, [1u8; 32])
-            .push_version("steam:892970", &packed, "owner", "dev-owner", 100, 5)
+            .push_version(
+                "steam:892970",
+                "steam:892970",
+                &packed,
+                "owner",
+                "dev-owner",
+                100,
+                5,
+            )
             .unwrap();
 
         // The local folder already has a (diverged) save to be backed up.
@@ -452,13 +470,15 @@ mod tests {
         let mut owner =
             SyncEngine::new(&channel, [2u8; 32], "owner", "dev-owner", 5, backups.path());
         assert!(matches!(
-            owner.push("valheim", owner_folder.path(), 100).unwrap(),
+            owner.push("valheim", "valheim", owner_folder.path(), 100).unwrap(),
             PushOutcome::Pushed(v) if v.number == 1
         ));
 
         // Pushing the same content again is a no-op.
         assert_eq!(
-            owner.push("valheim", owner_folder.path(), 110).unwrap(),
+            owner
+                .push("valheim", "valheim", owner_folder.path(), 110)
+                .unwrap(),
             PushOutcome::NoChange(1)
         );
 
@@ -476,14 +496,14 @@ mod tests {
         friend.pull("valheim", friend_folder.path(), 200).unwrap();
         write(friend_folder.path(), "world.db", b"friend day2");
         assert!(matches!(
-            friend.push("valheim", friend_folder.path(), 210).unwrap(),
+            friend.push("valheim", "valheim", friend_folder.path(), 210).unwrap(),
             PushOutcome::Pushed(v) if v.number == 2
         ));
 
         // Owner (still on v1 locally) edits and pushes -> CONFLICT (v2 exists).
         write(owner_folder.path(), "world.db", b"owner day2 diverged");
         assert!(matches!(
-            owner.push("valheim", owner_folder.path(), 220).unwrap(),
+            owner.push("valheim", "valheim", owner_folder.path(), 220).unwrap(),
             PushOutcome::Conflict { remote } if remote.number == 2
         ));
     }
@@ -497,10 +517,26 @@ mod tests {
         write(&s1, "world.db", b"owner day1");
         write(&s2, "world.db", b"friend day2");
         let v = Vault::new(&channel, [3u8; 32]);
-        v.push_version("valheim", &pack::pack_folder(&s1).unwrap(), "o", "do", 1, 5)
-            .unwrap();
-        v.push_version("valheim", &pack::pack_folder(&s2).unwrap(), "f", "df", 2, 5)
-            .unwrap();
+        v.push_version(
+            "valheim",
+            "valheim",
+            &pack::pack_folder(&s1).unwrap(),
+            "o",
+            "do",
+            1,
+            5,
+        )
+        .unwrap();
+        v.push_version(
+            "valheim",
+            "valheim",
+            &pack::pack_folder(&s2).unwrap(),
+            "f",
+            "df",
+            2,
+            5,
+        )
+        .unwrap();
         (channel, tmp)
     }
 
@@ -515,7 +551,13 @@ mod tests {
             SyncEngine::new(&channel, [3u8; 32], "owner", "dev-owner", 5, backups.path());
         // owner is behind (never synced) -> push would conflict; resolve PushLocal.
         let out = owner
-            .resolve("valheim", folder.path(), Resolution::PushLocal, 300)
+            .resolve(
+                "valheim",
+                "valheim",
+                folder.path(),
+                Resolution::PushLocal,
+                300,
+            )
             .unwrap();
         assert!(matches!(out, PushOutcome::Pushed(v) if v.number == 3));
         // Local content unchanged by PushLocal.
@@ -535,7 +577,13 @@ mod tests {
         let mut owner =
             SyncEngine::new(&channel, [3u8; 32], "owner", "dev-owner", 5, backups.path());
         let out = owner
-            .resolve("valheim", folder.path(), Resolution::TakeRemote, 300)
+            .resolve(
+                "valheim",
+                "valheim",
+                folder.path(),
+                Resolution::TakeRemote,
+                300,
+            )
             .unwrap();
         assert!(matches!(out, PushOutcome::NoChange(2)));
         // Local now holds the remote v2 content; the old local was backed up.
@@ -560,7 +608,7 @@ mod tests {
         let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b2.path());
 
         // Friend starts playing at t=1000 (marker active until 1000 + TTL).
-        friend.begin_playing("valheim", 1000).unwrap();
+        friend.begin_playing("valheim", "valheim", 1000).unwrap();
 
         // I see the friend playing (and not myself).
         let playing = me.who_is_playing("valheim", 1000).unwrap();
@@ -583,7 +631,7 @@ mod tests {
         let channel = InMemoryChannel::new();
         let b = tempfile::tempdir().unwrap();
         let me = SyncEngine::new(&channel, [4u8; 32], "me", "dev-me", 5, b.path());
-        me.begin_playing("valheim", 1000).unwrap();
+        me.begin_playing("valheim", "valheim", 1000).unwrap();
         assert!(me.who_is_playing("valheim", 1000).unwrap().is_empty());
     }
 
@@ -606,7 +654,7 @@ mod tests {
         std::fs::write(dir.path().join("world.db"), content).unwrap();
         let packed = crate::pack::pack_folder(dir.path()).unwrap();
         Vault::new(channel, [5u8; 32])
-            .push_version(game_id, &packed, "seed", "seed-dev", 1, 5)
+            .push_version(game_id, game_id, &packed, "seed", "seed-dev", 1, 5)
             .unwrap();
     }
 

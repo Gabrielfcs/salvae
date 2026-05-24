@@ -56,7 +56,7 @@ impl<C: Channel> Vault<C> {
             before = page.last().map(|m| m.id);
             let full_page = page.len() == SCAN_PAGE as usize;
             for msg in page {
-                if let Some(rec) = VersionRecord::parse(&msg.content) {
+                if let Some(rec) = VersionRecord::decode(&msg.content, &self.key) {
                     if rec.game_id == game_id {
                         out.push((msg, rec.version));
                     }
@@ -86,9 +86,11 @@ impl<C: Channel> Vault<C> {
     /// Seal `save`, store it as a new version of `game_id`, and prune to the
     /// last `max_versions`. If the latest stored version already has identical
     /// content, this is a no-op and the existing latest version is returned.
+    #[allow(clippy::too_many_arguments)]
     pub fn push_version(
         &self,
         game_id: &str,
+        game_name: &str,
         save: &[u8],
         author: &str,
         device_id: &str,
@@ -133,7 +135,7 @@ impl<C: Channel> Vault<C> {
             version: version.clone(),
         };
         self.channel
-            .send_message(&record.to_content(), &attachments)?;
+            .send_message(&record.encode(&self.key, game_name)?, &attachments)?;
 
         self.prune(game_id, max_versions)?;
         Ok(version)
@@ -192,6 +194,8 @@ mod tests {
     use super::*;
     use crate::memory::InMemoryChannel;
 
+    const TEST_KEY: [u8; 32] = [0u8; 32];
+
     fn put_version(ch: &InMemoryChannel, game_id: &str, number: u64) {
         let rec = VersionRecord {
             marker: MARKER.to_string(),
@@ -206,8 +210,11 @@ mod tests {
                 chunk_count: 1,
             },
         };
-        ch.send_message(&rec.to_content(), &[("chunk_0.bin".into(), vec![0u8; 10])])
-            .unwrap();
+        ch.send_message(
+            &rec.encode(&TEST_KEY, game_id).unwrap(),
+            &[("chunk_0.bin".into(), vec![0u8; 10])],
+        )
+        .unwrap();
     }
 
     #[test]
@@ -250,7 +257,9 @@ mod tests {
     fn push_creates_version_one_then_two() {
         let vault = Vault::new(InMemoryChannel::new(), [3u8; 32]);
         let v1 = vault
-            .push_version("valheim", b"save-A", "Gabriel", "pc-1", 1_000, 10)
+            .push_version(
+                "valheim", "valheim", b"save-A", "Gabriel", "pc-1", 1_000, 10,
+            )
             .unwrap();
         assert_eq!(v1.number, 1);
         assert_eq!(v1.author, "Gabriel");
@@ -258,7 +267,15 @@ mod tests {
         assert!(v1.chunk_count >= 1);
 
         let v2 = vault
-            .push_version("valheim", b"save-B-different", "Ana", "pc-2", 2_000, 10)
+            .push_version(
+                "valheim",
+                "valheim",
+                b"save-B-different",
+                "Ana",
+                "pc-2",
+                2_000,
+                10,
+            )
             .unwrap();
         assert_eq!(v2.number, 2);
         assert_eq!(vault.latest_version("valheim").unwrap().unwrap().number, 2);
@@ -268,10 +285,26 @@ mod tests {
     fn push_is_noop_when_content_unchanged() {
         let vault = Vault::new(InMemoryChannel::new(), [3u8; 32]);
         let v1 = vault
-            .push_version("valheim", b"same-bytes", "Gabriel", "pc-1", 1_000, 10)
+            .push_version(
+                "valheim",
+                "valheim",
+                b"same-bytes",
+                "Gabriel",
+                "pc-1",
+                1_000,
+                10,
+            )
             .unwrap();
         let again = vault
-            .push_version("valheim", b"same-bytes", "Gabriel", "pc-1", 2_000, 10)
+            .push_version(
+                "valheim",
+                "valheim",
+                b"same-bytes",
+                "Gabriel",
+                "pc-1",
+                2_000,
+                10,
+            )
             .unwrap();
         // No new version created; returns the existing latest.
         assert_eq!(again.number, v1.number);
@@ -283,7 +316,9 @@ mod tests {
         // Use a tiny max chunk size to force chunking of incompressible-ish data.
         let vault = Vault::new(InMemoryChannel::new(), [3u8; 32]).with_max_chunk_size(64);
         let big: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
-        let v = vault.push_version("game", &big, "a", "d", 1, 10).unwrap();
+        let v = vault
+            .push_version("game", "game", &big, "a", "d", 1, 10)
+            .unwrap();
         assert!(
             v.chunk_count > 1,
             "expected multiple chunks, got {}",
@@ -296,7 +331,7 @@ mod tests {
         let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]);
         let save = b"the actual world save bytes \x00\x01\x02";
         vault
-            .push_version("valheim", save, "a", "d", 1, 10)
+            .push_version("valheim", "valheim", save, "a", "d", 1, 10)
             .unwrap();
         let got = vault.download("valheim", 1).unwrap();
         assert_eq!(got, save);
@@ -306,7 +341,9 @@ mod tests {
     fn download_recovers_multichunk_save() {
         let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]).with_max_chunk_size(64);
         let big: Vec<u8> = (0..4096u32).map(|i| (i % 251) as u8).collect();
-        let v = vault.push_version("game", &big, "a", "d", 1, 10).unwrap();
+        let v = vault
+            .push_version("game", "game", &big, "a", "d", 1, 10)
+            .unwrap();
         assert!(v.chunk_count > 1);
         assert_eq!(vault.download("game", v.number).unwrap(), big);
     }
@@ -315,7 +352,7 @@ mod tests {
     fn download_missing_version_is_not_found() {
         let vault = Vault::new(InMemoryChannel::new(), [9u8; 32]);
         vault
-            .push_version("valheim", b"x", "a", "d", 1, 10)
+            .push_version("valheim", "valheim", b"x", "a", "d", 1, 10)
             .unwrap();
         assert!(matches!(
             vault.download("valheim", 99),
@@ -331,7 +368,7 @@ mod tests {
     fn download_with_wrong_key_fails() {
         let ch = InMemoryChannel::new();
         Vault::new(&ch, [1u8; 32])
-            .push_version("valheim", b"secret save", "a", "d", 1, 10)
+            .push_version("valheim", "valheim", b"secret save", "a", "d", 1, 10)
             .unwrap();
         // A different key cannot open the sealed blob.
         let wrong = Vault::new(&ch, [2u8; 32]);
@@ -345,7 +382,7 @@ mod tests {
         for i in 0..5u8 {
             let body = vec![i; (i as usize) + 1]; // distinct content each time
             vault
-                .push_version("game", &body, "a", "d", i as u64, 3)
+                .push_version("game", "game", &body, "a", "d", i as u64, 3)
                 .unwrap();
         }
         let versions = vault.list_versions("game").unwrap();
@@ -359,11 +396,19 @@ mod tests {
     fn prune_does_not_touch_other_games() {
         let vault = Vault::new(InMemoryChannel::new(), [4u8; 32]);
         vault
-            .push_version("keep", b"only-one", "a", "d", 1, 2)
+            .push_version("keep", "keep", b"only-one", "a", "d", 1, 2)
             .unwrap();
         for i in 0..4u8 {
             vault
-                .push_version("churn", &vec![i; (i as usize) + 1], "a", "d", i as u64, 2)
+                .push_version(
+                    "churn",
+                    "churn",
+                    &vec![i; (i as usize) + 1],
+                    "a",
+                    "d",
+                    i as u64,
+                    2,
+                )
                 .unwrap();
         }
         assert_eq!(vault.list_versions("keep").unwrap().len(), 1);
@@ -375,7 +420,15 @@ mod tests {
         let vault = Vault::new(InMemoryChannel::new(), [4u8; 32]);
         for i in 0..4u8 {
             vault
-                .push_version("game", &vec![i; (i as usize) + 1], "a", "d", i as u64, 2)
+                .push_version(
+                    "game",
+                    "game",
+                    &vec![i; (i as usize) + 1],
+                    "a",
+                    "d",
+                    i as u64,
+                    2,
+                )
                 .unwrap();
         }
         // Versions 1 and 2 were pruned (only 3 and 4 remain).

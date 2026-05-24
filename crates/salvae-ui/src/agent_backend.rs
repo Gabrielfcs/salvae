@@ -189,7 +189,15 @@ fn build_agent(
     let groups = build_groups(store, app_dir)?;
     let watcher = Watcher::new(SystemProcessLister);
     let detector = Detector::new(games.to_vec());
-    Ok(Agent::new(watcher, detector, groups))
+    let mut agent = Agent::new(watcher, detector, groups);
+    // Label channel messages with friendly game titles.
+    agent.set_game_names(
+        games
+            .iter()
+            .map(|g| (g.id.clone(), g.name.clone()))
+            .collect(),
+    );
+    Ok(agent)
 }
 
 impl Backend for AgentBackend {

@@ -13,6 +13,9 @@ pub enum SyncError {
     /// Error from the vault (storage/transport/crypto).
     #[error("vault error: {0}")]
     Vault(#[from] salvae_vault::VaultError),
+    /// Cryptographic error (e.g. sealing a presence marker).
+    #[error("crypto error: {0}")]
+    Core(#[from] salvae_core::CoreError),
     /// Filesystem error reading/writing save folders, state, or backups.
     #[error("io error: {0}")]
     Io(String),

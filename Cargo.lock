@@ -3843,6 +3843,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
+ "base64 0.22.1",
  "blake3",
  "getrandom 0.2.17",
  "serde",
