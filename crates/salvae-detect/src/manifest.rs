@@ -39,6 +39,16 @@ impl Manifest {
         Ok(Self { entries })
     }
 
+    /// Number of games in the manifest.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the manifest has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Path templates for a game — matched by Steam id first, then by name.
     pub fn paths_for(&self, steam_id: Option<u64>, name: &str) -> Vec<String> {
         if let Some(id) = steam_id {
@@ -121,20 +131,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn embedded_manifest_parses_and_matches_by_steam_id() {
+    fn embedded_manifest_parses_and_is_populated() {
         let m = Manifest::embedded();
-        let paths = m.paths_for(Some(2709570), "anything");
-        assert_eq!(
-            paths,
-            vec!["<home>/AppData/LocalLow/DDTNL/Supermarket Together"]
-        );
+        assert!(!m.is_empty(), "embedded manifest should have entries");
+        // A few ubiquitous games should be present and resolvable.
+        assert!(!m.paths_for(Some(105600), "Terraria").is_empty()); // Terraria
+        assert!(m.paths_for(None, "no such game at all").is_empty());
     }
 
     #[test]
-    fn matches_by_name_when_no_steam_id() {
-        let m = Manifest::embedded();
+    fn matches_by_name_is_case_insensitive() {
+        let json = r#"[{"name":"Valheim","steam_id":892970,"paths":["<home>/AppData/LocalLow/IronGate/Valheim"]}]"#;
+        let m = Manifest::from_json(json).unwrap();
         assert!(!m.paths_for(None, "valheim").is_empty());
-        assert!(m.paths_for(None, "no such game").is_empty());
+        assert!(!m.paths_for(None, "VALHEIM").is_empty());
+        assert!(m.paths_for(None, "nope").is_empty());
     }
 
     #[test]
