@@ -82,6 +82,21 @@ fn steam_id_of(game_id: &str) -> Option<u64> {
     game_id.strip_prefix("steam:").and_then(|n| n.parse().ok())
 }
 
+/// Turn a raw sync error into a clear, actionable message for common cases.
+fn friendly_sync_error(raw: &str) -> String {
+    if raw.contains("403") {
+        "Sem acesso ao canal do Discord (403). Confira se o bot pode ver o canal, \
+         ver o histórico, enviar mensagens e anexar arquivos nele."
+            .to_string()
+    } else if raw.contains("401") {
+        "Token do bot inválido (401). Refaça o grupo com um token válido.".to_string()
+    } else if raw.contains("404") {
+        "Canal do Discord não encontrado (404). Verifique o canal escolhido.".to_string()
+    } else {
+        format!("Falha na sincronização: {raw}")
+    }
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -325,7 +340,7 @@ impl Backend for AgentBackend {
         let now = now_ms();
         let results = match self.agent.tick(now) {
             Ok(r) => r,
-            Err(e) => return vec![Event::Error(format!("falha na sincronização: {e}"))],
+            Err(e) => return vec![Event::Error(friendly_sync_error(&e.to_string()))],
         };
         let mut events = Vec::new();
         for (game_event, outcome) in results {

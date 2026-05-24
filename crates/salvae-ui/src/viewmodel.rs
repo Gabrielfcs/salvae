@@ -97,6 +97,11 @@ impl ViewModel {
     }
 
     fn push_activity(&mut self, a: ActivityView) {
+        // Collapse consecutive identical lines (e.g. a sync error repeating
+        // every tick) instead of spamming the log.
+        if self.activity.last().map(|l| &l.message) == Some(&a.message) {
+            return;
+        }
         self.activity.push(a);
         if self.activity.len() > ACTIVITY_CAP {
             let overflow = self.activity.len() - ACTIVITY_CAP;
@@ -200,6 +205,17 @@ mod tests {
         vm.apply(Event::Error("boom".into()));
         assert_eq!(vm.last_error.as_deref(), Some("boom"));
         assert_eq!(vm.activity.last().unwrap().kind, ActivityKind::Error);
+    }
+
+    #[test]
+    fn consecutive_identical_activity_is_collapsed() {
+        let mut vm = ViewModel::default();
+        vm.apply(Event::Error("boom".into()));
+        vm.apply(Event::Error("boom".into()));
+        vm.apply(Event::Error("boom".into()));
+        assert_eq!(vm.activity.len(), 1);
+        vm.apply(Event::Activity(ActivityView::info("other")));
+        assert_eq!(vm.activity.len(), 2);
     }
 
     #[test]
