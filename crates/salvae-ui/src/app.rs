@@ -981,6 +981,15 @@ impl eframe::App for SalvaeApp {
             .frame(side_frame)
             .show(ctx, |ui| {
                 self.groups_panel(ui);
+                // Pin the app version to the bottom of the sidebar.
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new(concat!("Salvaê v", env!("CARGO_PKG_VERSION")))
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                });
             });
         egui::TopBottomPanel::bottom("activity")
             .resizable(false)
