@@ -33,6 +33,8 @@ type DiscordAgent = Agent<DiscordChannel, SystemProcessLister>;
 /// How often (ms) to poll the channel for teammates' new saves, independent of
 /// game open/close. Kept coarse so the background sync stays light.
 const REMOTE_POLL_INTERVAL_MS: u64 = 20_000;
+/// How often (ms) to check GitHub for a newer release. Coarse on purpose.
+const UPDATE_CHECK_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
 
 /// Production backend.
 pub struct AgentBackend {
@@ -43,6 +45,12 @@ pub struct AgentBackend {
     manifest: Manifest,
     /// Timestamp (ms) of the last background channel poll (0 = never).
     last_remote_poll_ms: u64,
+    /// Timestamp (ms) of the last GitHub update check (0 = never).
+    last_update_check_ms: u64,
+    /// A newer release found by the last check, pending silent apply.
+    pending_update: Option<crate::update::AvailableUpdate>,
+    /// Set once we have launched the installer, so we do it only once.
+    update_launched: bool,
 }
 
 impl AgentBackend {
@@ -60,6 +68,9 @@ impl AgentBackend {
             app_dir,
             manifest: Manifest::embedded(),
             last_remote_poll_ms: 0,
+            last_update_check_ms: 0,
+            pending_update: None,
+            update_launched: false,
         })
     }
 
@@ -508,6 +519,39 @@ impl Backend for AgentBackend {
                     }
                 }
                 Err(e) => events.push(Event::Error(friendly_sync_error(&e.to_string()))),
+            }
+        }
+
+        // Self-update: check GitHub on a coarse interval; apply silently when no
+        // game is running so we never restart the app mid-session.
+        if !self.update_launched
+            && now.saturating_sub(self.last_update_check_ms) >= UPDATE_CHECK_INTERVAL_MS
+        {
+            self.last_update_check_ms = now;
+            if let Ok(current) = semver::Version::parse(env!("CARGO_PKG_VERSION")) {
+                self.pending_update = crate::update::check(&current);
+            }
+        }
+        if let Some(update) = self.pending_update.clone() {
+            if !self.update_launched && !self.agent.any_game_open() {
+                match crate::update::download_and_verify(&update)
+                    .and_then(|path| crate::update::launch_installer(&path))
+                {
+                    Ok(()) => {
+                        self.update_launched = true;
+                        events.push(Event::Activity(ActivityView::info(format!(
+                            "Atualizando para a versão {}…",
+                            update.version
+                        ))));
+                    }
+                    Err(e) => {
+                        // Couldn't update now; drop it and retry on the next check.
+                        self.pending_update = None;
+                        events.push(Event::Activity(ActivityView::warning(format!(
+                            "Falha ao atualizar: {e}"
+                        ))));
+                    }
+                }
             }
         }
 
