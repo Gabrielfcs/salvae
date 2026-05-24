@@ -3405,7 +3405,6 @@ dependencies = [
  "egui",
  "egui_extras",
  "image",
- "raw-window-handle",
  "rfd",
  "salvae-agent",
  "salvae-config",
