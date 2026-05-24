@@ -62,12 +62,13 @@ jogo** e **envia o seu quando você fecha** — sem você precisar pensar nisso.
 
 ## Instalação
 
-1. Baixe o `salvae-ui.exe` (ou compile — veja abaixo).
-2. Rode. Na primeira vez, uma tela de boas-vindas explica o app.
-3. Crie um grupo seguindo o **assistente** (ele guia a criação do bot do
-   Discord, passo a passo).
+Baixe o **Salvae-Setup.exe** da página de [Releases](https://github.com/Gabrielfcs/salvae/releases),
+rode e siga o instalador. O app fica pesquisável no menu Iniciar e **se atualiza
+sozinho**: quando há uma versão nova, ele baixa e instala em silêncio (pedindo
+uma confirmação do Windows) e reabre na versão nova.
 
-> Requer Windows 10/11.
+> Como o instalador não é assinado, o Windows SmartScreen pode pedir "Executar
+> assim mesmo" na primeira vez.
 
 ## Criando um grupo (resumo)
 
@@ -94,6 +95,16 @@ cargo build --release -p salvae-ui
 # testes
 cargo test --workspace
 ```
+
+### Gerando um release
+
+Requer Inno Setup 6, `b3sum` (`cargo install b3sum`) e o `gh` autenticado:
+
+    .\scripts\release.ps1 1.2.0
+
+Isso faz o bump da versão, compila o `Salvae.exe`, gera o `Salvae-Setup.exe`,
+calcula o checksum blake3 e publica tudo no GitHub Releases. Os apps instalados
+detectam a nova versão e se atualizam sozinhos.
 
 ## Arquitetura
 
