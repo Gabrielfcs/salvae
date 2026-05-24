@@ -17,6 +17,7 @@ salvae-discord = { path = "../salvae-discord" }
 salvae-agent = { path = "../salvae-agent" }
 eframe = { version = "0.29", features = ["persistence"] }
 egui = "0.29"
+egui_extras = { version = "0.29", features = ["svg"] }
 rfd = "0.15"
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png"] }

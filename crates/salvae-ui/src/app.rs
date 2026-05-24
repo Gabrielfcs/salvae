@@ -209,10 +209,17 @@ impl SalvaeApp {
         // Instructions section.
         ui.label(egui::RichText::new("No Portal de Desenvolvedores do Discord").strong());
         ui.add_space(2.0);
-        ui.hyperlink_to(
-            "Abrir o portal",
-            "https://discord.com/developers/applications",
-        );
+        ui.horizontal(|ui| {
+            ui.hyperlink_to(
+                "Abrir o portal",
+                "https://discord.com/developers/applications",
+            );
+            ui.add(icon(
+                egui::include_image!("../assets/icons/external-link.svg"),
+                14.0,
+                theme::accent(),
+            ));
+        });
         ui.label(
             egui::RichText::new("Se aparecer um questionário de boas-vindas, clique em \"Pular\".")
                 .color(theme::MUTED)
@@ -305,7 +312,14 @@ impl SalvaeApp {
         if self.vm.token_validated {
             if let Some(name) = self.vm.bot_name.clone() {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new(format!("Conectado como {name}")).color(GREEN));
+                ui.horizontal(|ui| {
+                    ui.add(icon(
+                        egui::include_image!("../assets/icons/check.svg"),
+                        16.0,
+                        GREEN,
+                    ));
+                    ui.label(egui::RichText::new(format!("Conectado como {name}")).color(GREEN));
+                });
             }
         }
         ui.add_space(10.0);
@@ -328,7 +342,14 @@ impl SalvaeApp {
         wizard_header(ui, "Adicione o bot e escolha o canal", 3);
         if let Some(bot_id) = self.vm.bot_id {
             let url = bot_invite_url(bot_id);
-            ui.hyperlink_to("Adicionar o bot ao seu servidor", &url);
+            ui.horizontal(|ui| {
+                ui.hyperlink_to("Adicionar o bot ao seu servidor", &url);
+                ui.add(icon(
+                    egui::include_image!("../assets/icons/external-link.svg"),
+                    14.0,
+                    theme::accent(),
+                ));
+            });
             if ui.button("Copiar link de convite").clicked() {
                 ui.output_mut(|o| o.copied_text = url);
             }
@@ -711,7 +732,12 @@ impl SalvaeApp {
                     }
                 });
                 ui.add_space(16.0);
-                if theme::primary_button(ui, "Entrar  ->").clicked() {
+                let enter = icon(
+                    egui::include_image!("../assets/icons/log-in.svg"),
+                    18.0,
+                    egui::Color32::WHITE,
+                );
+                if theme::primary_button_icon(ui, enter, "Entrar").clicked() {
                     self.accept_consent();
                 }
             });
@@ -766,6 +792,13 @@ fn modal_shield(ctx: &egui::Context) -> bool {
 
 /// Confirmation green (Tailwind green-500) for the "connected" check.
 const GREEN: egui::Color32 = egui::Color32::from_rgb(34, 197, 94);
+
+/// A Lucide SVG icon sized to `size` and tinted `color`.
+fn icon<'a>(src: egui::ImageSource<'a>, size: f32, color: egui::Color32) -> egui::Image<'a> {
+    egui::Image::new(src)
+        .fit_to_exact_size(egui::vec2(size, size))
+        .tint(color)
+}
 
 /// Default description offered for the bot (the user can paste it in the portal).
 const DEFAULT_BOT_DESCRIPTION: &str =
@@ -861,7 +894,12 @@ impl eframe::App for SalvaeApp {
         if let Some(err) = self.vm.last_error.clone() {
             egui::TopBottomPanel::top("error").show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Erro: {err}"));
+                    ui.add(icon(
+                        egui::include_image!("../assets/icons/alert-triangle.svg"),
+                        16.0,
+                        egui::Color32::LIGHT_RED,
+                    ));
+                    ui.colored_label(egui::Color32::LIGHT_RED, &err);
                     if ui.button("Dispensar").clicked() {
                         self.vm.last_error = None;
                     }

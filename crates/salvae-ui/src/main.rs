@@ -66,6 +66,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             theme::apply(&cc.egui_ctx);
+            egui_extras::install_image_loaders(&cc.egui_ctx);
 
             // Spawn the worker thread, waking the UI via the egui context.
             let ctx = cc.egui_ctx.clone();

@@ -114,3 +114,21 @@ pub fn primary_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
             .rounding(Rounding::same(6.0)),
     )
 }
+
+/// A filled accent button with a leading icon.
+pub fn primary_button_icon(
+    ui: &mut egui::Ui,
+    icon: egui::Image<'_>,
+    label: &str,
+) -> egui::Response {
+    ui.add(
+        egui::Button::image_and_text(icon, egui::RichText::new(label).color(ZINC_50))
+            .fill(ACCENT)
+            .rounding(Rounding::same(6.0)),
+    )
+}
+
+/// The accent colour (e.g. for tinting link/affordance icons).
+pub const fn accent() -> egui::Color32 {
+    ACCENT
+}
