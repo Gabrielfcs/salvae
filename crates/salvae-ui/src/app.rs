@@ -193,6 +193,7 @@ impl SalvaeApp {
         );
         ui.add_space(8.0);
         for line in [
+            "• Se aparecer um questionário de boas-vindas, clique em \"Pular\".",
             "1. New Application → dê um nome (ex.: \"Salvaê\").",
             "2. Abra a aba Bot → Reset Token → Copy.",
             "3. Mantenha o token em segredo — é a chave do grupo para o canal.",
