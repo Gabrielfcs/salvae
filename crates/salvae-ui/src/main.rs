@@ -22,6 +22,19 @@ fn app_dir() -> PathBuf {
 /// How often the worker polls the process list / sync loop.
 const TICK_INTERVAL: Duration = Duration::from_secs(4);
 
+/// Decode the embedded mascot logo into the window/taskbar icon.
+fn load_window_icon() -> egui::IconData {
+    let image = image::load_from_memory(salvae_ui::icon::bot_logo_png())
+        .expect("decode window icon")
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    egui::IconData {
+        rgba: image.into_raw(),
+        width,
+        height,
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let backend = match AgentBackend::load(app_dir()) {
         Ok(b) => b,
@@ -37,6 +50,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Salvaê")
+            .with_icon(std::sync::Arc::new(load_window_icon()))
             .with_inner_size([900.0, 600.0])
             // Don't let the window shrink below the default opening size.
             .with_min_inner_size([900.0, 600.0]),

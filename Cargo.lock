@@ -3726,6 +3726,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "image",
  "rfd",
  "salvae-agent",
  "salvae-config",

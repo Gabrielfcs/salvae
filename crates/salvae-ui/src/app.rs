@@ -35,6 +35,8 @@ pub struct SalvaeApp {
     tx: Sender<Command>,
     rx: Receiver<Event>,
     forms: Forms,
+    /// Lazily-loaded mascot logo texture for the welcome screen.
+    bot_logo: Option<egui::TextureHandle>,
     /// Whether the first-run consent screen has been accepted.
     consent_accepted: bool,
     /// Marker file written when consent is accepted (gates the app on first run).
@@ -57,6 +59,7 @@ impl SalvaeApp {
             tx,
             rx,
             forms: Forms::default(),
+            bot_logo: None,
             consent_accepted: false,
             consent_path: None,
             surfaced_conflict: None,
@@ -652,15 +655,35 @@ impl SalvaeApp {
             });
     }
 
+    /// Load (once) and return the mascot logo texture.
+    fn bot_logo(&mut self, ctx: &egui::Context) -> egui::TextureHandle {
+        self.bot_logo
+            .get_or_insert_with(|| {
+                let img = image::load_from_memory(crate::icon::bot_logo_png())
+                    .expect("decode logo")
+                    .to_rgba8();
+                let (w, h) = img.dimensions();
+                let color = egui::ColorImage::from_rgba_unmultiplied(
+                    [w as usize, h as usize],
+                    img.as_raw(),
+                );
+                ctx.load_texture("bot-logo", color, egui::TextureOptions::LINEAR)
+            })
+            .clone()
+    }
+
     /// First-run consent / transparency screen. Gates the app until accepted.
     fn consent_screen(&mut self, ctx: &egui::Context) {
+        let logo = self.bot_logo(ctx);
         egui::CentralPanel::default().show(ctx, |ui| {
             // Roughly centre the fixed-width card vertically.
-            let top = ((ui.available_height() - 360.0) * 0.5).max(12.0);
+            let top = ((ui.available_height() - 440.0) * 0.5).max(12.0);
             ui.add_space(top);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(460.0);
 
+                ui.image((logo.id(), egui::vec2(120.0, 120.0)));
+                ui.add_space(6.0);
                 ui.heading("Bem-vindo ao Salvaê");
                 ui.add_space(10.0);
                 ui.label(
