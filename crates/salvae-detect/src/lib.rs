@@ -4,6 +4,8 @@
 pub mod candidate;
 pub mod epic;
 pub mod game;
+pub mod manifest;
+pub mod resolve;
 pub mod roots;
 pub mod snapshot;
 pub mod steam;
