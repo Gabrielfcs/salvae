@@ -94,6 +94,15 @@ pub fn apply(ctx: &egui::Context) {
     ]
     .into();
 
+    // Pin our dark theme regardless of the OS theme. egui 0.29 follows the
+    // system theme by default and re-applies the matching `Style` each frame —
+    // on a machine in Windows "light mode" that would overwrite our visuals
+    // (light panels + dark cards = unreadable). Pinning Dark and registering
+    // our style as *both* the dark and light style keeps it consistent for
+    // everyone.
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_style_of(egui::Theme::Dark, style.clone());
+    ctx.set_style_of(egui::Theme::Light, style.clone());
     ctx.set_style(style);
 }
 
