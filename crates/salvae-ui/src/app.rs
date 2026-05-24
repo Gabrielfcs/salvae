@@ -211,81 +211,83 @@ impl SalvaeApp {
         );
         ui.add_space(14.0);
 
-        // Instructions section.
+        // Open the portal — a primary action, so a button (not a link).
         ui.label(egui::RichText::new("No Portal de Desenvolvedores do Discord").strong());
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            ui.hyperlink_to(
-                "Abrir o portal",
+        ui.add_space(6.0);
+        let portal_icon = icon(
+            egui::include_image!("../assets/icons/external-link.svg"),
+            16.0,
+            egui::Color32::WHITE,
+        );
+        if ui
+            .add(egui::Button::image_and_text(portal_icon, "Abrir o portal"))
+            .clicked()
+        {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(
                 "https://discord.com/developers/applications",
-            );
-            ui.add(icon(
-                egui::include_image!("../assets/icons/external-link.svg"),
-                14.0,
-                theme::accent(),
             ));
-        });
+        }
         ui.label(
             egui::RichText::new("Se aparecer um questionário de boas-vindas, clique em \"Pular\".")
                 .color(theme::MUTED)
                 .small(),
         );
-        ui.add_space(8.0);
+        ui.add_space(10.0);
+
         theme::card_frame().show(ui, |ui| {
-            for (n, text) in [
-                (
-                    1,
-                    "Clique em \"Novo aplicativo\", dê um nome (ex.: \"Salvaê\") e crie.",
-                ),
-                (
-                    2,
-                    "Defina o ícone e a descrição (opcional) e clique em \"Salvar alterações\" \
-                     — se trocar de aba sem salvar, você perde essas mudanças.",
-                ),
-                (3, "Abra a aba \"Bot\" no menu lateral."),
-                (
-                    4,
-                    "Clique em \"Redefinir token\", confirme, e copie o token que aparecer.",
-                ),
-            ] {
+            let step = |ui: &mut egui::Ui, n: u32, text: &str| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(egui::RichText::new(format!("{n}.")).strong().color(GREEN));
                     ui.label(text);
                 });
-                ui.add_space(6.0);
-            }
+            };
+
+            step(
+                ui,
+                1,
+                "Clique em \"Novo aplicativo\", dê um nome (ex.: \"Salvaê\") e crie.",
+            );
+            ui.add_space(6.0);
+
+            step(
+                ui,
+                2,
+                "Defina o ícone e a descrição (opcional) e clique em \"Salvar alterações\" \
+                 — se trocar de aba sem salvar, você perde essas mudanças.",
+            );
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.add_space(16.0); // indent under step 2
+                if ui.button("Baixar ícone do bot").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .set_file_name("salvae-bot.png")
+                        .add_filter("PNG", &["png"])
+                        .save_file()
+                    {
+                        let _ = std::fs::write(path, crate::icon::bot_icon_png());
+                    }
+                }
+                if ui.button("Copiar descrição").clicked() {
+                    ui.output_mut(|o| o.copied_text = DEFAULT_BOT_DESCRIPTION.to_string());
+                }
+            });
+            ui.add_space(6.0);
+
+            step(ui, 3, "Abra a aba \"Bot\" no menu lateral.");
+            ui.add_space(6.0);
+
+            step(
+                ui,
+                4,
+                "Clique em \"Redefinir token\", confirme, e copie o token que aparecer.",
+            );
+            ui.add_space(6.0);
+
             ui.label(
                 egui::RichText::new("Mantenha o token em segredo — é a chave do grupo.")
                     .color(theme::MUTED)
                     .small(),
             );
-        });
-
-        ui.add_space(14.0);
-        ui.separator();
-        ui.add_space(8.0);
-
-        // Optional defaults section.
-        ui.label(egui::RichText::new("Opcional — padrões do Salvaê").strong());
-        ui.label(
-            egui::RichText::new("Use se não quiser personalizar o bot.")
-                .color(theme::MUTED)
-                .small(),
-        );
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            if ui.button("Baixar ícone do bot…").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .set_file_name("salvae-bot.png")
-                    .add_filter("PNG", &["png"])
-                    .save_file()
-                {
-                    let _ = std::fs::write(path, crate::icon::bot_icon_png());
-                }
-            }
-            if ui.button("Copiar descrição").clicked() {
-                ui.output_mut(|o| o.copied_text = DEFAULT_BOT_DESCRIPTION.to_string());
-            }
         });
 
         ui.add_space(14.0);
@@ -347,14 +349,20 @@ impl SalvaeApp {
         wizard_header(ui, "Adicione o bot e escolha o canal", 3);
         if let Some(bot_id) = self.vm.bot_id {
             let url = bot_invite_url(bot_id);
-            ui.horizontal(|ui| {
-                ui.hyperlink_to("Adicionar o bot ao seu servidor", &url);
-                ui.add(icon(
-                    egui::include_image!("../assets/icons/external-link.svg"),
-                    14.0,
-                    theme::accent(),
-                ));
-            });
+            let add_icon = icon(
+                egui::include_image!("../assets/icons/external-link.svg"),
+                16.0,
+                egui::Color32::WHITE,
+            );
+            if ui
+                .add(egui::Button::image_and_text(
+                    add_icon,
+                    "Adicionar o bot ao seu servidor",
+                ))
+                .clicked()
+            {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url.clone()));
+            }
             if ui.button("Copiar link de convite").clicked() {
                 ui.output_mut(|o| o.copied_text = url);
             }
