@@ -3400,6 +3400,7 @@ dependencies = [
 name = "salvae-ui"
 version = "1.1.1"
 dependencies = [
+ "blake3",
  "eframe",
  "egui",
  "egui_extras",
@@ -3414,8 +3415,12 @@ dependencies = [
  "salvae-sync",
  "salvae-vault",
  "salvae-watch",
+ "semver",
+ "serde",
+ "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+ "ureq",
  "windows-sys 0.59.0",
  "winresource",
 ]
