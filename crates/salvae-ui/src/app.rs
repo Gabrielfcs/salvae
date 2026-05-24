@@ -787,7 +787,7 @@ impl SalvaeApp {
                 });
                 ui.add_space(14.0);
 
-                ui.label("Seu nome (aparece como autor dos seus saves)");
+                ui.label("Seu nome");
                 ui.add_space(2.0);
                 let name = ui.add(
                     egui::TextEdit::singleline(&mut self.forms.name_input)
