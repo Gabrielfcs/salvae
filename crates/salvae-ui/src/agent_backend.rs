@@ -269,6 +269,13 @@ impl Backend for AgentBackend {
         self.rebuild_agent()
     }
 
+    fn set_group_token(&mut self, group_id: &str, token: &str) -> Result<(), String> {
+        self.store
+            .set_group_token(group_id, token)
+            .map_err(|e| e.to_string())?;
+        self.rebuild_agent()
+    }
+
     fn set_game_path(&mut self, group_id: &str, game_id: &str, folder: &str) -> Result<(), String> {
         self.store
             .set_game_path(group_id, game_id, folder)

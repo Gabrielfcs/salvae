@@ -34,6 +34,11 @@ pub enum Command {
     RemoveGroup {
         group_id: String,
     },
+    /// Replace a group's bot token (after resetting it in the portal).
+    SetGroupToken {
+        group_id: String,
+        token: String,
+    },
     SetGamePath {
         group_id: String,
         game_id: String,

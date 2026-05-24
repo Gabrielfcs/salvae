@@ -17,6 +17,8 @@ struct Forms {
     selected_group: Option<String>,
     show_create: bool,
     show_join: bool,
+    show_token: bool,
+    token_input: String,
     /// Current step of the create-group wizard (0..=3).
     create_step: u8,
     new_name: String,
@@ -541,6 +543,43 @@ impl SalvaeApp {
         }
     }
 
+    /// Dialog to replace the selected group's bot token.
+    fn token_modal(&mut self, ctx: &egui::Context) {
+        if !self.forms.show_token {
+            return;
+        }
+        let Some(group_id) = self.forms.selected_group.clone() else {
+            self.forms.show_token = false;
+            return;
+        };
+        let mut open = true;
+        egui::Window::new("Atualizar token do bot")
+            .collapsible(false)
+            .resizable(false)
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.set_min_width(360.0);
+                ui.label("Cole o novo token do bot (após \"Redefinir token\" no portal).");
+                ui.add(egui::TextEdit::singleline(&mut self.forms.token_input).password(true));
+                ui.add_space(8.0);
+                let ready = !self.forms.token_input.trim().is_empty();
+                ui.add_enabled_ui(ready, |ui| {
+                    if theme::primary_button(ui, "Salvar token").clicked() {
+                        self.send(Command::SetGroupToken {
+                            group_id: group_id.clone(),
+                            token: self.forms.token_input.trim().to_string(),
+                        });
+                        self.forms.show_token = false;
+                    }
+                });
+            });
+        if !open {
+            self.forms.show_token = false;
+        }
+    }
+
     fn games_panel(&mut self, ui: &mut egui::Ui) {
         let Some(group_id) = self.forms.selected_group.clone() else {
             ui.label("Selecione um grupo à esquerda.");
@@ -551,11 +590,19 @@ impl SalvaeApp {
         };
 
         ui.heading(format!("{} — jogos", group.name));
-        if ui.button("Remover este grupo").clicked() {
-            self.send(Command::RemoveGroup {
-                group_id: group_id.clone(),
-            });
-            self.forms.selected_group = None;
+        ui.horizontal(|ui| {
+            if ui.button("Atualizar token").clicked() {
+                self.forms.token_input.clear();
+                self.forms.show_token = true;
+            }
+            if ui.button("Remover este grupo").clicked() {
+                self.send(Command::RemoveGroup {
+                    group_id: group_id.clone(),
+                });
+                self.forms.selected_group = None;
+            }
+        });
+        if self.forms.selected_group.is_none() {
             return;
         }
         ui.separator();
@@ -952,6 +999,7 @@ impl eframe::App for SalvaeApp {
         }
         self.create_modal(ctx);
         self.join_modal(ctx);
+        self.token_modal(ctx);
         self.conflict_modal(ctx);
 
         // Tray menu clicks arrive on a global channel that eframe does not

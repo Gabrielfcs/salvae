@@ -29,6 +29,8 @@ pub trait Backend {
     ) -> Result<String, String>;
     fn join_group(&mut self, password: &str, invite: &str) -> Result<(), String>;
     fn remove_group(&mut self, group_id: &str) -> Result<(), String>;
+    /// Replace a group's bot token (after the owner reset it in the portal).
+    fn set_group_token(&mut self, group_id: &str, token: &str) -> Result<(), String>;
     fn set_game_path(&mut self, group_id: &str, game_id: &str, folder: &str) -> Result<(), String>;
 
     /// Enable sync for `game_id` in `group_id`: auto-resolve its save folder and

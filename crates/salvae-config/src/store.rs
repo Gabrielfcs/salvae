@@ -155,6 +155,15 @@ impl<S: SecretStore> ConfigStore<S> {
         self.save()
     }
 
+    /// Replace a group's bot token (keeping its derived key), e.g. after the
+    /// owner reset the token in the Discord portal. Errors if the group is
+    /// unknown.
+    pub fn set_group_token(&mut self, group_id: &str, token: &str) -> Result<(), ConfigError> {
+        let mut secret = self.group_secret(group_id)?;
+        secret.token = token.to_string();
+        self.secrets.set(group_id, secret)
+    }
+
     /// Remove the local save folder for `game_id` in `group_id` (disable sync),
     /// then persist. Errors if the group is unknown.
     pub fn remove_game_path(&mut self, group_id: &str, game_id: &str) -> Result<(), ConfigError> {

@@ -54,6 +54,14 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             Ok(()) => vec![Event::Groups(backend.refresh_groups())],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::SetGroupToken { group_id, token } => {
+            match backend.set_group_token(&group_id, &token) {
+                Ok(()) => vec![Event::Activity(ActivityView::info(
+                    "Token do grupo atualizado",
+                ))],
+                Err(e) => vec![Event::Error(e)],
+            }
+        }
         Command::SetGamePath {
             group_id,
             game_id,
@@ -202,6 +210,9 @@ mod tests {
             Ok(())
         }
         fn remove_group(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn set_group_token(&mut self, _: &str, _: &str) -> Result<(), String> {
             Ok(())
         }
         fn set_game_path(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> {
