@@ -115,16 +115,13 @@ pub fn primary_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     )
 }
 
-/// A filled accent button with a leading icon.
-pub fn primary_button_icon(
-    ui: &mut egui::Ui,
-    icon: egui::Image<'_>,
-    label: &str,
-) -> egui::Response {
+/// A square, icon-only accent button with rounded corners.
+pub fn primary_icon_button(ui: &mut egui::Ui, icon: egui::Image<'_>) -> egui::Response {
     ui.add(
-        egui::Button::image_and_text(icon, egui::RichText::new(label).color(ZINC_50))
+        egui::Button::image(icon)
+            .min_size(egui::vec2(44.0, 44.0))
             .fill(ACCENT)
-            .rounding(Rounding::same(6.0)),
+            .rounding(Rounding::same(8.0)),
     )
 }
 

@@ -733,11 +733,11 @@ impl SalvaeApp {
                 });
                 ui.add_space(16.0);
                 let enter = icon(
-                    egui::include_image!("../assets/icons/log-in.svg"),
-                    18.0,
+                    egui::include_image!("../assets/icons/arrow-right.svg"),
+                    20.0,
                     egui::Color32::WHITE,
                 );
-                if theme::primary_button_icon(ui, enter, "Entrar").clicked() {
+                if theme::primary_icon_button(ui, enter).clicked() {
                     self.accept_consent();
                 }
             });
