@@ -27,26 +27,29 @@ pub struct Snapshot {
 
 /// Capture file metadata under `root`, including files whose relative path is
 /// at most `max_depth` components deep (so a file directly in `root` is depth
-/// 1). Missing roots yield an empty snapshot.
+/// 1). Missing roots yield an empty snapshot. Inaccessible subtrees are skipped
+/// (the scan never fails on permission errors).
 pub fn capture(root: &Path, max_depth: usize) -> Result<Snapshot, DetectError> {
     let mut snap = Snapshot::default();
     if root.is_dir() {
-        walk(root, root, 0, max_depth, &mut snap)?;
+        walk(root, root, 0, max_depth, &mut snap);
     }
     Ok(snap)
 }
 
 /// `current_depth` is the number of directory levels below `root` (0 at root).
 /// A file in this directory therefore sits at `current_depth + 1` components.
-fn walk(
-    root: &Path,
-    dir: &Path,
-    current_depth: usize,
-    max_depth: usize,
-    snap: &mut Snapshot,
-) -> Result<(), DetectError> {
-    for entry in std::fs::read_dir(dir).map_err(|e| DetectError::Io(e.to_string()))? {
-        let entry = entry.map_err(|e| DetectError::Io(e.to_string()))?;
+///
+/// Best-effort: directories and entries that can't be read (permission denied,
+/// junctions, etc. — common under `%LocalAppData%`) are skipped rather than
+/// failing the whole scan.
+fn walk(root: &Path, dir: &Path, current_depth: usize, max_depth: usize, snap: &mut Snapshot) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(_) => return, // unreadable directory — skip it
+    };
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
         let path = entry.path();
         let meta = match entry.metadata() {
             Ok(m) => m,
@@ -55,14 +58,13 @@ fn walk(
         if meta.is_dir() {
             // Only descend if files inside the subdir could still be in range.
             if current_depth + 1 < max_depth {
-                walk(root, &path, current_depth + 1, max_depth, snap)?;
+                walk(root, &path, current_depth + 1, max_depth, snap);
             }
         } else if meta.is_file() && current_depth < max_depth {
-            let rel = path
-                .strip_prefix(root)
-                .map_err(|e| DetectError::Io(e.to_string()))?
-                .to_string_lossy()
-                .replace('\\', "/");
+            let Ok(stripped) = path.strip_prefix(root) else {
+                continue;
+            };
+            let rel = stripped.to_string_lossy().replace('\\', "/");
             let mtime_ms = meta
                 .modified()
                 .ok()
@@ -78,7 +80,6 @@ fn walk(
             );
         }
     }
-    Ok(())
 }
 
 /// Return the relative paths that are new in `after` or differ from `before`
