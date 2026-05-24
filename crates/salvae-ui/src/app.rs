@@ -210,7 +210,7 @@ impl SalvaeApp {
         ui.label(egui::RichText::new("No Portal de Desenvolvedores do Discord").strong());
         ui.add_space(2.0);
         ui.hyperlink_to(
-            "Abrir o portal ↗",
+            "Abrir o portal",
             "https://discord.com/developers/applications",
         );
         ui.label(
@@ -305,7 +305,7 @@ impl SalvaeApp {
         if self.vm.token_validated {
             if let Some(name) = self.vm.bot_name.clone() {
                 ui.add_space(4.0);
-                ui.label(egui::RichText::new(format!("✓ Conectado como {name}")).color(GREEN));
+                ui.label(egui::RichText::new(format!("Conectado como {name}")).color(GREEN));
             }
         }
         ui.add_space(10.0);
@@ -328,7 +328,7 @@ impl SalvaeApp {
         wizard_header(ui, "Adicione o bot e escolha o canal", 3);
         if let Some(bot_id) = self.vm.bot_id {
             let url = bot_invite_url(bot_id);
-            ui.hyperlink_to("Adicionar o bot ao seu servidor ↗", &url);
+            ui.hyperlink_to("Adicionar o bot ao seu servidor", &url);
             if ui.button("Copiar link de convite").clicked() {
                 ui.output_mut(|o| o.copied_text = url);
             }
@@ -711,7 +711,7 @@ impl SalvaeApp {
                     }
                 });
                 ui.add_space(16.0);
-                if theme::primary_button(ui, "Entrar  →").clicked() {
+                if theme::primary_button(ui, "Entrar  ->").clicked() {
                     self.accept_consent();
                 }
             });
@@ -861,7 +861,7 @@ impl eframe::App for SalvaeApp {
         if let Some(err) = self.vm.last_error.clone() {
             egui::TopBottomPanel::top("error").show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.colored_label(egui::Color32::LIGHT_RED, format!("⚠ {err}"));
+                    ui.colored_label(egui::Color32::LIGHT_RED, format!("Erro: {err}"));
                     if ui.button("Dispensar").clicked() {
                         self.vm.last_error = None;
                     }
