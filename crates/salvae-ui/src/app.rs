@@ -116,18 +116,8 @@ impl SalvaeApp {
 
     fn groups_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Grupos");
-        ui.add_space(4.0);
-        if self.vm.groups.is_empty() {
-            ui.label(egui::RichText::new("Nenhum grupo ainda.").color(theme::MUTED));
-        }
-        for g in &self.vm.groups {
-            let selected = self.forms.selected_group.as_deref() == Some(&g.id);
-            if ui.selectable_label(selected, &g.name).clicked() {
-                self.forms.selected_group = Some(g.id.clone());
-            }
-        }
-
         ui.add_space(8.0);
+
         ui.horizontal(|ui| {
             if theme::primary_button(ui, "+ Criar grupo").clicked() {
                 self.reset_create_form();
@@ -140,7 +130,22 @@ impl SalvaeApp {
             }
         });
 
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(4.0);
+
+        if self.vm.groups.is_empty() {
+            ui.label(egui::RichText::new("Nenhum grupo ainda.").color(theme::MUTED));
+        }
+        for g in &self.vm.groups {
+            let selected = self.forms.selected_group.as_deref() == Some(&g.id);
+            if ui.selectable_label(selected, &g.name).clicked() {
+                self.forms.selected_group = Some(g.id.clone());
+            }
+        }
+
         if let Some(invite) = self.vm.last_invite.clone() {
+            ui.add_space(8.0);
             ui.separator();
             ui.label(
                 egui::RichText::new("Convite para compartilhar (envie a senha por fora):")
