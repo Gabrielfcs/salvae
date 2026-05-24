@@ -553,51 +553,32 @@ impl SalvaeApp {
         ui.separator();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for game in &self.vm.installed_games {
-                let mapping = group.games.iter().find(|m| m.game_id == game.id);
+            let games = self.vm.installed_games.clone();
+            for game in &games {
+                let mapping = group.games.iter().find(|m| m.game_id == game.id).cloned();
+                let enabled = mapping.is_some();
+                let unresolved = self.vm.unresolved.contains(&game.id);
                 theme::card_frame().show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.strong(&game.name);
                         ui.label(egui::RichText::new(format!("({})", game.id)).color(theme::MUTED));
                     });
-                    match mapping {
-                        Some(m) => {
-                            ui.label(
-                                egui::RichText::new(format!("Pasta: {}", m.folder))
-                                    .color(theme::MUTED),
-                            );
-                        }
-                        None => {
-                            ui.label(
-                                egui::RichText::new("Pasta: não definida").color(theme::MUTED),
-                            );
-                        }
-                    }
 
                     ui.horizontal(|ui| {
-                        if ui.button("Escolher pasta…").clicked() {
-                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                self.send(Command::SetGamePath {
+                        let mut on = enabled;
+                        if ui.toggle_value(&mut on, "Sincronizar").changed() {
+                            if on {
+                                self.send(Command::EnableSync {
                                     group_id: group_id.clone(),
                                     game_id: game.id.clone(),
-                                    folder: path.display().to_string(),
                                 });
-                            }
-                        }
-                        if self.vm.scan_armed.contains(&game.id) {
-                            if ui.button("Fechei o jogo — encontrar save").clicked() {
-                                self.send(Command::CollectScan {
+                            } else {
+                                self.vm.unresolved.retain(|id| id != &game.id);
+                                self.send(Command::DisableSync {
+                                    group_id: group_id.clone(),
                                     game_id: game.id.clone(),
                                 });
                             }
-                            ui.label(
-                                egui::RichText::new("varredura armada — abra e feche o jogo")
-                                    .color(theme::MUTED),
-                            );
-                        } else if ui.button("Encontrar save automaticamente").clicked() {
-                            self.send(Command::ArmScan {
-                                game_id: game.id.clone(),
-                            });
                         }
                         if ui.button("Histórico").clicked() {
                             self.send(Command::LoadHistory {
@@ -606,24 +587,32 @@ impl SalvaeApp {
                         }
                     });
 
-                    if let Some(cands) = self.vm.scan_results.get(&game.id) {
-                        ui.add_space(4.0);
-                        ui.strong("Pastas candidatas a save");
-                        for c in cands {
-                            ui.horizontal(|ui| {
-                                ui.label(format!(
-                                    "{} ({} arquivos alterados)",
-                                    c.folder.display(),
-                                    c.changed_files
-                                ));
-                                if ui.button("Usar esta").clicked() {
-                                    self.send(Command::SetGamePath {
-                                        group_id: group_id.clone(),
-                                        game_id: game.id.clone(),
-                                        folder: c.folder.display().to_string(),
-                                    });
-                                }
-                            });
+                    if let Some(m) = &mapping {
+                        ui.label(
+                            egui::RichText::new(format!("Pasta: {}", m.folder)).color(theme::MUTED),
+                        );
+                        if ui.button("Trocar pasta").clicked() {
+                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                self.send(Command::SetGamePath {
+                                    group_id: group_id.clone(),
+                                    game_id: game.id.clone(),
+                                    folder: path.display().to_string(),
+                                });
+                            }
+                        }
+                    } else if unresolved {
+                        ui.label(
+                            egui::RichText::new("Não encontrei a pasta automaticamente.")
+                                .color(egui::Color32::from_rgb(245, 158, 11)),
+                        );
+                        if ui.button("Escolher pasta manualmente").clicked() {
+                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                self.send(Command::SetGamePath {
+                                    group_id: group_id.clone(),
+                                    game_id: game.id.clone(),
+                                    folder: path.display().to_string(),
+                                });
+                            }
                         }
                     }
 

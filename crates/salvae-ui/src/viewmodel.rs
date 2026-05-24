@@ -5,8 +5,7 @@ use std::collections::BTreeMap;
 
 use crate::command::Event;
 use crate::view::{
-    ActivityView, ChannelView, Conflict, DiscoveredCandidate, GameView, GroupView, GuildView,
-    VersionView,
+    ActivityView, ChannelView, Conflict, GameView, GroupView, GuildView, VersionView,
 };
 
 /// Maximum activity-log lines kept in memory.
@@ -30,8 +29,9 @@ pub struct ViewModel {
     pub bot_id: Option<u64>,
     pub bot_name: Option<String>,
     pub history: BTreeMap<String, Vec<VersionView>>,
-    pub scan_armed: Vec<String>,
-    pub scan_results: BTreeMap<String, Vec<DiscoveredCandidate>>,
+    /// Games whose sync was enabled but whose save folder could not be
+    /// auto-resolved — the UI prompts a manual pick for these.
+    pub unresolved: Vec<String>,
     pub pending_conflicts: Vec<Conflict>,
     pub activity: Vec<ActivityView>,
     pub last_invite: Option<String>,
@@ -42,7 +42,14 @@ impl ViewModel {
     /// Fold one worker event into the render state.
     pub fn apply(&mut self, event: Event) {
         match event {
-            Event::Groups(g) => self.groups = g,
+            Event::Groups(g) => {
+                // A game that now has a configured folder is no longer unresolved.
+                self.unresolved.retain(|id| {
+                    !g.iter()
+                        .any(|grp| grp.games.iter().any(|m| &m.game_id == id))
+                });
+                self.groups = g;
+            }
             Event::InstalledGames(g) => self.installed_games = g,
             Event::TokenValidated { bot_id, bot_name } => {
                 self.token_validated = true;
@@ -64,17 +71,10 @@ impl ViewModel {
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);
             }
-            Event::ScanArmed { game_id } => {
-                if !self.scan_armed.contains(&game_id) {
-                    self.scan_armed.push(game_id);
+            Event::SyncUnresolved { game_id } => {
+                if !self.unresolved.contains(&game_id) {
+                    self.unresolved.push(game_id);
                 }
-            }
-            Event::ScanResults {
-                game_id,
-                candidates,
-            } => {
-                self.scan_armed.retain(|g| g != &game_id);
-                self.scan_results.insert(game_id, candidates);
             }
             Event::Conflict { game_id, remote } => {
                 if !self.pending_conflicts.iter().any(|c| c.game_id == game_id) {
@@ -147,18 +147,23 @@ mod tests {
     }
 
     #[test]
-    fn scan_armed_then_results_moves_state() {
+    fn unresolved_is_set_then_cleared_when_game_gets_a_folder() {
+        use crate::view::GameMapping;
         let mut vm = ViewModel::default();
-        vm.apply(Event::ScanArmed {
+        vm.apply(Event::SyncUnresolved {
             game_id: "steam:1".into(),
         });
-        assert_eq!(vm.scan_armed, vec!["steam:1".to_string()]);
-        vm.apply(Event::ScanResults {
-            game_id: "steam:1".into(),
-            candidates: vec![],
-        });
-        assert!(vm.scan_armed.is_empty());
-        assert!(vm.scan_results.contains_key("steam:1"));
+        assert_eq!(vm.unresolved, vec!["steam:1".to_string()]);
+        // Once the game shows up with a configured folder, it's resolved.
+        vm.apply(Event::Groups(vec![GroupView {
+            id: "g1".into(),
+            name: "Crew".into(),
+            games: vec![GameMapping {
+                game_id: "steam:1".into(),
+                folder: "C:/x".into(),
+            }],
+        }]));
+        assert!(vm.unresolved.is_empty());
     }
 
     #[test]

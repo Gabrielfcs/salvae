@@ -1,8 +1,6 @@
 //! Messages between the UI thread and the background worker.
 
-use crate::view::{
-    ActivityView, ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView,
-};
+use crate::view::{ActivityView, ChannelView, GameView, GroupView, GuildView, VersionView};
 
 /// A request from the UI thread to the worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,12 +39,14 @@ pub enum Command {
         game_id: String,
         folder: String,
     },
-    /// Capture the "before" snapshot for auto-discovery.
-    ArmScan {
+    /// Turn on sync for a game: auto-resolve its save folder and store it.
+    EnableSync {
+        group_id: String,
         game_id: String,
     },
-    /// Capture the "after" snapshot, diff, and rank candidates.
-    CollectScan {
+    /// Turn off sync for a game: forget its save folder.
+    DisableSync {
+        group_id: String,
         game_id: String,
     },
     LoadHistory {
@@ -84,12 +84,10 @@ pub enum Event {
         game_id: String,
         versions: Vec<VersionView>,
     },
-    ScanArmed {
+    /// Sync was enabled but no save folder could be auto-resolved — the UI
+    /// should prompt the user to pick it manually.
+    SyncUnresolved {
         game_id: String,
-    },
-    ScanResults {
-        game_id: String,
-        candidates: Vec<DiscoveredCandidate>,
     },
     /// A close produced a conflict; the UI must prompt for resolution.
     Conflict {

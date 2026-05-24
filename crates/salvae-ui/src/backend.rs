@@ -2,7 +2,7 @@
 //! is testable with a fake (the real impl is `AgentBackend`, Task 7).
 
 use crate::command::Event;
-use crate::view::{ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView};
+use crate::view::{ChannelView, GameView, GroupView, GuildView, VersionView};
 
 /// Everything the background worker can ask of the backend. All fallible calls
 /// return `Result<_, String>` — the error string is shown verbatim in the UI.
@@ -31,10 +31,12 @@ pub trait Backend {
     fn remove_group(&mut self, group_id: &str) -> Result<(), String>;
     fn set_game_path(&mut self, group_id: &str, game_id: &str, folder: &str) -> Result<(), String>;
 
-    /// Capture the "before" snapshot for `game_id`.
-    fn arm_scan(&mut self, game_id: &str) -> Result<(), String>;
-    /// Diff + rank candidates for a previously armed `game_id`.
-    fn collect_scan(&mut self, game_id: &str) -> Result<Vec<DiscoveredCandidate>, String>;
+    /// Enable sync for `game_id` in `group_id`: auto-resolve its save folder and
+    /// store it. Returns the resolved folder, or `None` if it couldn't be found
+    /// (the UI then asks for a manual pick).
+    fn enable_sync(&mut self, group_id: &str, game_id: &str) -> Result<Option<String>, String>;
+    /// Disable sync for `game_id` in `group_id` (forget its save folder).
+    fn disable_sync(&mut self, group_id: &str, game_id: &str) -> Result<(), String>;
 
     fn history(&mut self, game_id: &str) -> Result<Vec<VersionView>, String>;
     fn restore(&mut self, game_id: &str, version: u64) -> Result<(), String>;

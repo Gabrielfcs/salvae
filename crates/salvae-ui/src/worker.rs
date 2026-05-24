@@ -65,17 +65,32 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             ],
             Err(e) => vec![Event::Error(e)],
         },
-        Command::ArmScan { game_id } => match backend.arm_scan(&game_id) {
-            Ok(()) => vec![Event::ScanArmed { game_id }],
-            Err(e) => vec![Event::Error(e)],
-        },
-        Command::CollectScan { game_id } => match backend.collect_scan(&game_id) {
-            Ok(candidates) => vec![Event::ScanResults {
-                game_id,
-                candidates,
-            }],
-            Err(e) => vec![Event::Error(e)],
-        },
+        Command::EnableSync { group_id, game_id } => {
+            match backend.enable_sync(&group_id, &game_id) {
+                Ok(Some(folder)) => vec![
+                    Event::Activity(ActivityView::info(format!("Sync ativado: {folder}"))),
+                    Event::Groups(backend.refresh_groups()),
+                ],
+                Ok(None) => vec![
+                    Event::SyncUnresolved {
+                        game_id: game_id.clone(),
+                    },
+                    Event::Activity(ActivityView::warning(format!(
+                        "Não encontrei a pasta de save de {game_id} — escolha manualmente."
+                    ))),
+                ],
+                Err(e) => vec![Event::Error(e)],
+            }
+        }
+        Command::DisableSync { group_id, game_id } => {
+            match backend.disable_sync(&group_id, &game_id) {
+                Ok(()) => vec![
+                    Event::Activity(ActivityView::info(format!("Sync desativado: {game_id}"))),
+                    Event::Groups(backend.refresh_groups()),
+                ],
+                Err(e) => vec![Event::Error(e)],
+            }
+        }
         Command::LoadHistory { game_id } => match backend.history(&game_id) {
             Ok(versions) => vec![Event::History { game_id, versions }],
             Err(e) => vec![Event::Error(e)],
@@ -136,9 +151,7 @@ pub fn run<B: Backend>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::{
-        ChannelView, DiscoveredCandidate, GameView, GroupView, GuildView, VersionView,
-    };
+    use crate::view::{ChannelView, GameView, GroupView, GuildView, VersionView};
 
     /// A scripted fake backend recording calls and returning canned results.
     #[derive(Default)]
@@ -194,11 +207,11 @@ mod tests {
         fn set_game_path(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> {
             Ok(())
         }
-        fn arm_scan(&mut self, _: &str) -> Result<(), String> {
-            Ok(())
+        fn enable_sync(&mut self, _: &str, _: &str) -> Result<Option<String>, String> {
+            Ok(Some("C:/save".into()))
         }
-        fn collect_scan(&mut self, _: &str) -> Result<Vec<DiscoveredCandidate>, String> {
-            Ok(vec![])
+        fn disable_sync(&mut self, _: &str, _: &str) -> Result<(), String> {
+            Ok(())
         }
         fn history(&mut self, _: &str) -> Result<Vec<VersionView>, String> {
             Ok(self.history_result.clone())

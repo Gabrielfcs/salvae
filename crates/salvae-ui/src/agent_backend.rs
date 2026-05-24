@@ -1,8 +1,7 @@
-//! The real `Backend`: a `ConfigStore` + a per-group `Agent` over Discord,
-//! plus auto-discovery scan state. Rebuilds the agent whenever group config
-//! changes so history/restore/resolve/tick see fresh state.
+//! The real `Backend`: a `ConfigStore` + a per-group `Agent` over Discord.
+//! Rebuilds the agent whenever group config changes so
+//! history/restore/resolve/tick see fresh state.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,8 +11,9 @@ use salvae_config::dpapi::DpapiSecretStore;
 use salvae_config::store::ConfigStore;
 use salvae_core::version::SaveVersion;
 use salvae_detect::game::InstalledGame;
+use salvae_detect::manifest::{Manifest, Placeholders};
 use salvae_detect::roots::save_search_roots;
-use salvae_detect::{epic, steam};
+use salvae_detect::{epic, resolve, steam};
 use salvae_discord::discord::DiscordChannel;
 use salvae_discord::discover::DiscordDiscovery;
 use salvae_sync::engine::{PushOutcome, Resolution, SyncEngine};
@@ -24,10 +24,8 @@ use salvae_watch::system::SystemProcessLister;
 
 use crate::backend::Backend;
 use crate::command::Event;
-use crate::discovery::{self, ArmedScan};
 use crate::view::{
-    ActivityView, ChannelView, DiscoveredCandidate, GameMapping, GameView, GroupView, GuildView,
-    VersionView,
+    ActivityView, ChannelView, GameMapping, GameView, GroupView, GuildView, VersionView,
 };
 
 type DiscordAgent = Agent<DiscordChannel, SystemProcessLister>;
@@ -38,7 +36,7 @@ pub struct AgentBackend {
     games: Vec<InstalledGame>,
     agent: DiscordAgent,
     app_dir: PathBuf,
-    armed: HashMap<String, ArmedScan>,
+    manifest: Manifest,
 }
 
 impl AgentBackend {
@@ -54,8 +52,13 @@ impl AgentBackend {
             games,
             agent,
             app_dir,
-            armed: HashMap::new(),
+            manifest: Manifest::embedded(),
         })
+    }
+
+    /// The installed game with this id, if known.
+    fn game(&self, game_id: &str) -> Option<&InstalledGame> {
+        self.games.iter().find(|g| g.id == game_id)
     }
 
     /// Apply a config change by swapping in fresh per-group runtimes, keeping
@@ -68,22 +71,15 @@ impl AgentBackend {
 
     /// Find an installed game's display name by id (falls back to the id).
     fn game_name(&self, game_id: &str) -> String {
-        self.games
-            .iter()
-            .find(|g| g.id == game_id)
+        self.game(game_id)
             .map(|g| g.name.clone())
             .unwrap_or_else(|| game_id.to_string())
     }
+}
 
-    /// All snapshot roots for a scan: the standard save roots + the game's
-    /// install dir (so in-place saves are caught too).
-    fn scan_roots(&self, game_id: &str) -> Vec<PathBuf> {
-        let mut roots = save_search_roots();
-        if let Some(g) = self.games.iter().find(|g| g.id == game_id) {
-            roots.push(g.install_dir.clone());
-        }
-        roots
-    }
+/// Parse the Steam AppID out of an id like `steam:892970`.
+fn steam_id_of(game_id: &str) -> Option<u64> {
+    game_id.strip_prefix("steam:").and_then(|n| n.parse().ok())
 }
 
 fn now_ms() -> u64 {
@@ -265,20 +261,40 @@ impl Backend for AgentBackend {
         self.rebuild_agent()
     }
 
-    fn arm_scan(&mut self, game_id: &str) -> Result<(), String> {
-        let roots = self.scan_roots(game_id);
-        let armed = discovery::arm(&roots).map_err(|e| e.to_string())?;
-        self.armed.insert(game_id.to_string(), armed);
-        Ok(())
+    fn enable_sync(&mut self, group_id: &str, game_id: &str) -> Result<Option<String>, String> {
+        let name = self.game_name(game_id);
+        let install_dir = self.game(game_id).map(|g| g.install_dir.clone());
+        // Search the standard save roots plus the game's install dir.
+        let mut roots = save_search_roots();
+        if let Some(dir) = &install_dir {
+            roots.push(dir.clone());
+        }
+        let placeholders = Placeholders::live(install_dir);
+        let resolved = resolve::find_save_dir(
+            &name,
+            steam_id_of(game_id),
+            &self.manifest,
+            &placeholders,
+            &roots,
+        );
+        match resolved {
+            Some(folder) => {
+                let folder = folder.display().to_string();
+                self.store
+                    .set_game_path(group_id, game_id, &folder)
+                    .map_err(|e| e.to_string())?;
+                self.rebuild_agent()?;
+                Ok(Some(folder))
+            }
+            None => Ok(None),
+        }
     }
 
-    fn collect_scan(&mut self, game_id: &str) -> Result<Vec<DiscoveredCandidate>, String> {
-        let armed = self
-            .armed
-            .remove(game_id)
-            .ok_or_else(|| format!("nenhuma varredura armada para {game_id}"))?;
-        let name = self.game_name(game_id);
-        discovery::collect(&armed, &name).map_err(|e| e.to_string())
+    fn disable_sync(&mut self, group_id: &str, game_id: &str) -> Result<(), String> {
+        self.store
+            .remove_game_path(group_id, game_id)
+            .map_err(|e| e.to_string())?;
+        self.rebuild_agent()
     }
 
     fn history(&mut self, game_id: &str) -> Result<Vec<VersionView>, String> {

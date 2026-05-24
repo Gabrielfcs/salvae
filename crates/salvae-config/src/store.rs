@@ -154,6 +154,19 @@ impl<S: SecretStore> ConfigStore<S> {
             .insert(game_id.to_string(), folder.to_string());
         self.save()
     }
+
+    /// Remove the local save folder for `game_id` in `group_id` (disable sync),
+    /// then persist. Errors if the group is unknown.
+    pub fn remove_game_path(&mut self, group_id: &str, game_id: &str) -> Result<(), ConfigError> {
+        let group = self
+            .config
+            .groups
+            .iter_mut()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| ConfigError::GroupNotFound(group_id.to_string()))?;
+        group.game_paths.remove(game_id);
+        self.save()
+    }
 }
 
 /// Generate a random lowercase-hex id of `bytes` random bytes.
