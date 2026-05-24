@@ -38,8 +38,8 @@ pub enum Command {
     RemoveGroup {
         group_id: String,
     },
-    /// Rebuild a group's invite and surface it for copying.
-    ShowInvite {
+    /// Rebuild a group's invite and copy it to the clipboard.
+    CopyInvite {
         group_id: String,
     },
     /// Re-post a group's invite into its Discord channel via the bot.
@@ -97,6 +97,8 @@ pub enum Event {
     DiscoveredChannels(Vec<ChannelView>),
     /// A freshly created group's shareable invite blob.
     Invite(String),
+    /// A group's invite the UI should copy to the clipboard.
+    InviteToCopy(String),
     History {
         game_id: String,
         versions: Vec<VersionView>,

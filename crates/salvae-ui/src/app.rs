@@ -557,8 +557,8 @@ impl SalvaeApp {
                     group_id: group_id.clone(),
                 });
             }
-            if ui.button("Mostrar convite").clicked() {
-                self.send(Command::ShowInvite {
+            if ui.button("Copiar convite").clicked() {
+                self.send(Command::CopyInvite {
                     group_id: group_id.clone(),
                 });
             }
@@ -903,6 +903,12 @@ fn label_for<T: IdName>(items: &[T], selected: Option<u64>, placeholder: &str) -
 impl eframe::App for SalvaeApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
+
+        // Copy a requested invite to the clipboard (needs the egui context, so
+        // it happens here rather than in the view model).
+        if let Some(invite) = self.vm.invite_to_copy.take() {
+            ctx.output_mut(|o| o.copied_text = invite);
+        }
 
         // Closing the window (X) quits the app. To keep syncing in the
         // background, the user minimizes it (the worker thread keeps running

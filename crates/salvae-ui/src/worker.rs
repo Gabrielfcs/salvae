@@ -60,8 +60,13 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             Ok(()) => vec![Event::Groups(backend.refresh_groups())],
             Err(e) => vec![Event::Error(e)],
         },
-        Command::ShowInvite { group_id } => match backend.group_invite(&group_id) {
-            Ok(invite) => vec![Event::Invite(invite)],
+        Command::CopyInvite { group_id } => match backend.group_invite(&group_id) {
+            Ok(invite) => vec![
+                Event::InviteToCopy(invite),
+                Event::Activity(ActivityView::info(
+                    "Convite copiado para a área de transferência",
+                )),
+            ],
             Err(e) => vec![Event::Error(e)],
         },
         Command::ResendInvite { group_id } => match backend.resend_invite(&group_id) {

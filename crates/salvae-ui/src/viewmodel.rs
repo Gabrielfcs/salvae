@@ -35,6 +35,8 @@ pub struct ViewModel {
     pub pending_conflicts: Vec<Conflict>,
     pub activity: Vec<ActivityView>,
     pub last_invite: Option<String>,
+    /// An invite the UI should copy to the clipboard on the next frame.
+    pub invite_to_copy: Option<String>,
     pub last_error: Option<String>,
 }
 
@@ -72,6 +74,7 @@ impl ViewModel {
                     "Grupo criado — compartilhe o convite abaixo",
                 ));
             }
+            Event::InviteToCopy(s) => self.invite_to_copy = Some(s),
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);
             }
