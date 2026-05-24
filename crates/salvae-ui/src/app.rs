@@ -119,14 +119,14 @@ impl SalvaeApp {
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
-            if theme::primary_button(ui, "+ Criar grupo").clicked() {
-                self.reset_create_form();
-                self.forms.show_create = true;
-            }
             if ui.button("Entrar em grupo").clicked() {
                 self.forms.join_password.clear();
                 self.forms.join_invite.clear();
                 self.forms.show_join = true;
+            }
+            if theme::primary_button(ui, "+ Criar grupo").clicked() {
+                self.reset_create_form();
+                self.forms.show_create = true;
             }
         });
 
