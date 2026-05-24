@@ -655,51 +655,66 @@ impl SalvaeApp {
     /// First-run consent / transparency screen. Gates the app until accepted.
     fn consent_screen(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_space(20.0);
-            ui.vertical_centered(|ui| ui.heading("Bem-vindo ao Salvaê"));
-            ui.add_space(10.0);
-            ui.label(
-                "O Salvaê sincroniza os saves de jogos co-op do seu grupo por um canal \
-                 privado e cifrado do Discord. Para isso, ele precisa:",
-            );
-            ui.add_space(10.0);
-            theme::card_frame().show(ui, |ui| {
-                for line in [
-                    "• Detectar quando seus jogos abrem e fecham (lendo a lista de processos).",
-                    "• Ler e gravar apenas as pastas de save que você escolher.",
-                    "• Enviar os saves (cifrados) ao canal do Discord do seu grupo, pela internet.",
-                    "• Guardar segredos (token e chave) protegidos pela DPAPI do Windows.",
-                ] {
-                    ui.label(line);
-                    ui.add_space(4.0);
-                }
-            });
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new(
-                    "O Salvaê só mexe nos jogos que você configurar, e nada é enviado sem a \
-                     senha do grupo.",
-                )
-                .color(theme::MUTED)
-                .small(),
-            );
-            ui.add_space(16.0);
-            ui.horizontal(|ui| {
-                if theme::primary_button(ui, "Aceitar e continuar").clicked() {
-                    self.consent_accepted = true;
-                    if let Some(path) = self.consent_path.clone() {
-                        if let Some(parent) = path.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        let _ = std::fs::write(path, b"accepted");
+            // Roughly centre the fixed-width card vertically.
+            let top = ((ui.available_height() - 360.0) * 0.5).max(12.0);
+            ui.add_space(top);
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(460.0);
+
+                ui.heading("Bem-vindo ao Salvaê");
+                ui.add_space(10.0);
+                ui.label(
+                    "O Salvaê sincroniza os saves de jogos co-op do seu grupo por um canal \
+                     privado e cifrado do Discord. Para isso, ele precisa:",
+                );
+                ui.add_space(10.0);
+                theme::card_frame().show(ui, |ui| {
+                    ui.set_max_width(460.0);
+                    for line in [
+                        "Detectar quando seus jogos abrem e fecham (lendo a lista de processos).",
+                        "Ler e gravar apenas as pastas de save que você escolher.",
+                        "Enviar os saves (cifrados) ao canal do Discord do seu grupo, pela internet.",
+                        "Guardar segredos (token e chave) protegidos pela DPAPI do Windows.",
+                    ] {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(egui::RichText::new("•").color(GREEN).strong());
+                            ui.label(line);
+                        });
+                        ui.add_space(4.0);
                     }
-                }
-                if ui.button("Sair").clicked() {
-                    self.send(Command::Shutdown);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
+                });
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(
+                        "O Salvaê só mexe nos jogos que você configurar, e nada é enviado sem a \
+                         senha do grupo.",
+                    )
+                    .color(theme::MUTED)
+                    .small(),
+                );
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    if theme::primary_button(ui, "Aceitar e continuar").clicked() {
+                        self.accept_consent();
+                    }
+                    if ui.button("Sair").clicked() {
+                        self.send(Command::Shutdown);
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
         });
+    }
+
+    /// Record consent (in memory + a marker file) so it is asked only once.
+    fn accept_consent(&mut self) {
+        self.consent_accepted = true;
+        if let Some(path) = self.consent_path.clone() {
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(path, b"accepted");
+        }
     }
 
     fn activity_panel(&self, ui: &mut egui::Ui) {
