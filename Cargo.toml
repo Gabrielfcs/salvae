@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/salvae-core", "crates/salvae-vault", "crates/salvae-discord", "crates/salvae-config", "crates/salvae-sync", "crates/salvae-detect", "crates/salvae-watch", "crates/salvae-agent", "crates/salvae-ui"]
 
 [workspace.package]
-version = "1.2.2"
+version = "1.2.3"
 edition = "2021"
 license = "MIT"
 authors = ["Gabriel <gabrielfcsxd@gmail.com>"]
