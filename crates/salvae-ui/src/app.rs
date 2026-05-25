@@ -982,14 +982,17 @@ impl eframe::App for SalvaeApp {
                 // ready — clicking it starts the update.
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.add_space(2.0);
-                    ui.horizontal(|ui| {
+                    // Center the [version + optional update icon] group as a unit:
+                    // a left-to-right row whose main axis is center-aligned, so the
+                    // version stays centered and the green icon sits to its right.
+                    let row = egui::Layout::left_to_right(egui::Align::Center)
+                        .with_main_align(egui::Align::Center);
+                    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 20.0), row, |ui| {
                         ui.label(
                             egui::RichText::new(concat!("Salvaê v", env!("CARGO_PKG_VERSION")))
                                 .small()
                                 .color(theme::MUTED),
                         );
-                        // Discreet green download icon to the right of the version,
-                        // only when an update is ready (Discord-style).
                         if let Some(version) = self.vm.available_update.clone() {
                             let resp = ui
                                 .add(
