@@ -75,6 +75,12 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             ))],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::ApplyUpdate => match backend.apply_update() {
+            Ok(()) => vec![Event::Activity(ActivityView::info(
+                "Baixando a atualização — o app vai reiniciar",
+            ))],
+            Err(e) => vec![Event::Error(e)],
+        },
         Command::SetGroupToken { group_id, token } => {
             match backend.set_group_token(&group_id, &token) {
                 Ok(()) => vec![Event::Activity(ActivityView::info(
@@ -243,6 +249,9 @@ mod tests {
             Ok("invite-blob".into())
         }
         fn resend_invite(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn apply_update(&mut self) -> Result<(), String> {
             Ok(())
         }
         fn set_group_token(&mut self, _: &str, _: &str) -> Result<(), String> {

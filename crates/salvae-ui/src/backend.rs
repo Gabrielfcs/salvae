@@ -53,6 +53,11 @@ pub trait Backend {
     fn restore(&mut self, game_id: &str, version: u64) -> Result<(), String>;
     fn resolve(&mut self, game_id: &str, take_remote: bool) -> Result<(), String>;
 
+    /// Download and launch the pending app update (the installer then closes
+    /// and reopens the app). Errors if no update is pending or the download
+    /// fails.
+    fn apply_update(&mut self) -> Result<(), String>;
+
     /// Poll the watch/sync loop once; return any activity/conflict events.
     fn tick(&mut self) -> Vec<Event>;
 }

@@ -46,6 +46,8 @@ pub enum Command {
     ResendInvite {
         group_id: String,
     },
+    /// Download and launch the pending app update (triggered by the UI button).
+    ApplyUpdate,
     /// Replace a group's bot token (after resetting it in the portal).
     SetGroupToken {
         group_id: String,
@@ -99,6 +101,10 @@ pub enum Event {
     Invite(String),
     /// A group's invite the UI should copy to the clipboard.
     InviteToCopy(String),
+    /// A newer app version is available (surfaces the "Atualizar" button).
+    UpdateAvailable {
+        version: String,
+    },
     History {
         game_id: String,
         versions: Vec<VersionView>,

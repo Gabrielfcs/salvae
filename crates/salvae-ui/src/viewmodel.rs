@@ -37,6 +37,8 @@ pub struct ViewModel {
     pub last_invite: Option<String>,
     /// An invite the UI should copy to the clipboard on the next frame.
     pub invite_to_copy: Option<String>,
+    /// A newer app version available to install (shows the "Atualizar" button).
+    pub available_update: Option<String>,
     pub last_error: Option<String>,
 }
 
@@ -75,6 +77,12 @@ impl ViewModel {
                 ));
             }
             Event::InviteToCopy(s) => self.invite_to_copy = Some(s),
+            Event::UpdateAvailable { version } => {
+                self.available_update = Some(version.clone());
+                self.push_activity(ActivityView::info(format!(
+                    "Atualização disponível: v{version}"
+                )));
+            }
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);
             }

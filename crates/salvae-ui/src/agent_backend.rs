@@ -47,10 +47,9 @@ pub struct AgentBackend {
     last_remote_poll_ms: u64,
     /// Timestamp (ms) of the last GitHub update check (0 = never).
     last_update_check_ms: u64,
-    /// A newer release found by the last check, pending silent apply.
+    /// A newer release found by the last check, awaiting the user's click on
+    /// the "Atualizar" button.
     pending_update: Option<crate::update::AvailableUpdate>,
-    /// Set once we have launched the installer, so we do it only once.
-    update_launched: bool,
 }
 
 impl AgentBackend {
@@ -70,7 +69,6 @@ impl AgentBackend {
             last_remote_poll_ms: 0,
             last_update_check_ms: 0,
             pending_update: None,
-            update_launched: false,
         })
     }
 
@@ -439,6 +437,15 @@ impl Backend for AgentBackend {
         Ok(())
     }
 
+    fn apply_update(&mut self) -> Result<(), String> {
+        let update = self
+            .pending_update
+            .clone()
+            .ok_or_else(|| "Nenhuma atualização disponível.".to_string())?;
+        let path = crate::update::download_and_verify(&update)?;
+        crate::update::launch_installer(&path)
+    }
+
     fn tick(&mut self) -> Vec<Event> {
         let now = now_ms();
         let results = match self.agent.tick(now) {
@@ -522,35 +529,18 @@ impl Backend for AgentBackend {
             }
         }
 
-        // Self-update: check GitHub on a coarse interval; apply silently when no
-        // game is running so we never restart the app mid-session.
-        if !self.update_launched
+        // Self-update: check GitHub on a coarse interval and announce a newer
+        // release once. The user starts it via the "Atualizar" button
+        // (Command::ApplyUpdate -> apply_update); we never apply on our own.
+        if self.pending_update.is_none()
             && now.saturating_sub(self.last_update_check_ms) >= UPDATE_CHECK_INTERVAL_MS
         {
             self.last_update_check_ms = now;
             if let Ok(current) = semver::Version::parse(env!("CARGO_PKG_VERSION")) {
-                self.pending_update = crate::update::check(&current);
-            }
-        }
-        if let Some(update) = self.pending_update.clone() {
-            if !self.update_launched && !self.agent.any_game_open() {
-                match crate::update::download_and_verify(&update)
-                    .and_then(|path| crate::update::launch_installer(&path))
-                {
-                    Ok(()) => {
-                        self.update_launched = true;
-                        events.push(Event::Activity(ActivityView::info(format!(
-                            "Atualizando para a versão {}…",
-                            update.version
-                        ))));
-                    }
-                    Err(e) => {
-                        // Couldn't update now; drop it and retry on the next check.
-                        self.pending_update = None;
-                        events.push(Event::Activity(ActivityView::warning(format!(
-                            "Falha ao atualizar: {e}"
-                        ))));
-                    }
+                if let Some(update) = crate::update::check(&current) {
+                    let version = update.version.to_string();
+                    self.pending_update = Some(update);
+                    events.push(Event::UpdateAvailable { version });
                 }
             }
         }

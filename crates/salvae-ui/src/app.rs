@@ -949,6 +949,22 @@ impl eframe::App for SalvaeApp {
             });
         }
 
+        if let Some(version) = self.vm.available_update.clone() {
+            egui::TopBottomPanel::top("update").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(format!("Atualização disponível: v{version}"));
+                    if theme::primary_button(ui, "Atualizar").clicked() {
+                        self.send(Command::ApplyUpdate);
+                    }
+                    ui.label(
+                        egui::RichText::new("o app vai reiniciar")
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                });
+            });
+        }
+
         let side_frame =
             egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
         let central_frame =
