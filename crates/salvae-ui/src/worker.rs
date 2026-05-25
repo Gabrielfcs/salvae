@@ -75,6 +75,7 @@ pub fn dispatch<B: Backend>(backend: &mut B, command: Command) -> Vec<Event> {
             ))],
             Err(e) => vec![Event::Error(e)],
         },
+        Command::CheckUpdate => backend.check_update(),
         Command::ApplyUpdate => match backend.apply_update() {
             Ok(()) => vec![Event::Activity(ActivityView::info(
                 "Baixando a atualização — o app vai reiniciar",
@@ -250,6 +251,9 @@ mod tests {
         }
         fn resend_invite(&self, _: &str) -> Result<(), String> {
             Ok(())
+        }
+        fn check_update(&mut self) -> Vec<Event> {
+            vec![]
         }
         fn apply_update(&mut self) -> Result<(), String> {
             Ok(())

@@ -45,6 +45,10 @@ pub struct SalvaeApp {
     /// The game id of the conflict we have already forced the window open for,
     /// so a single conflict surfaces the window exactly once.
     surfaced_conflict: Option<String>,
+    /// Window focus last frame, to detect focus regained (triggers an update check).
+    was_focused: bool,
+    /// egui time (s) of the last focus-triggered update check, for a 30s debounce.
+    last_focus_check: f64,
 }
 
 impl SalvaeApp {
@@ -57,6 +61,8 @@ impl SalvaeApp {
             bot_logo: None,
             name_set: false,
             surfaced_conflict: None,
+            was_focused: false,
+            last_focus_check: f64::NEG_INFINITY,
         }
     }
 
@@ -909,6 +915,17 @@ impl eframe::App for SalvaeApp {
         if let Some(invite) = self.vm.invite_to_copy.take() {
             ctx.output_mut(|o| o.copied_text = invite);
         }
+
+        // Re-check for updates when the window regains focus, debounced to at
+        // most once per 30s (the worker also checks every 15 min in the
+        // background).
+        let now_t = ctx.input(|i| i.time);
+        let focused = ctx.input(|i| i.focused);
+        if focused && !self.was_focused && now_t - self.last_focus_check >= 30.0 {
+            self.last_focus_check = now_t;
+            self.send(Command::CheckUpdate);
+        }
+        self.was_focused = focused;
 
         // Closing the window (X) quits the app. To keep syncing in the
         // background, the user minimizes it (the worker thread keeps running

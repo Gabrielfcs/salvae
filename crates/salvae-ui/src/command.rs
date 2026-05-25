@@ -46,6 +46,8 @@ pub enum Command {
     ResendInvite {
         group_id: String,
     },
+    /// Check GitHub for a newer release now (e.g. on window focus).
+    CheckUpdate,
     /// Download and launch the pending app update (triggered by the UI button).
     ApplyUpdate,
     /// Replace a group's bot token (after resetting it in the portal).

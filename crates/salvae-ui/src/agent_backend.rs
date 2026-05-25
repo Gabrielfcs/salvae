@@ -33,8 +33,8 @@ type DiscordAgent = Agent<DiscordChannel, SystemProcessLister>;
 /// How often (ms) to poll the channel for teammates' new saves, independent of
 /// game open/close. Kept coarse so the background sync stays light.
 const REMOTE_POLL_INTERVAL_MS: u64 = 20_000;
-/// How often (ms) to check GitHub for a newer release. Coarse on purpose.
-const UPDATE_CHECK_INTERVAL_MS: u64 = 6 * 60 * 60 * 1000;
+/// How often (ms) to check GitHub for a newer release in the background.
+const UPDATE_CHECK_INTERVAL_MS: u64 = 15 * 60 * 1000;
 
 /// Production backend.
 pub struct AgentBackend {
@@ -437,6 +437,25 @@ impl Backend for AgentBackend {
         Ok(())
     }
 
+    fn check_update(&mut self) -> Vec<Event> {
+        // Skip if we already found one (the icon is up); otherwise ask GitHub.
+        if self.pending_update.is_some() {
+            return vec![];
+        }
+        self.last_update_check_ms = now_ms();
+        let Ok(current) = semver::Version::parse(env!("CARGO_PKG_VERSION")) else {
+            return vec![];
+        };
+        match crate::update::check(&current) {
+            Some(update) => {
+                let version = update.version.to_string();
+                self.pending_update = Some(update);
+                vec![Event::UpdateAvailable { version }]
+            }
+            None => vec![],
+        }
+    }
+
     fn apply_update(&mut self) -> Result<(), String> {
         let update = self
             .pending_update
@@ -529,20 +548,14 @@ impl Backend for AgentBackend {
             }
         }
 
-        // Self-update: check GitHub on a coarse interval and announce a newer
-        // release once. The user starts it via the "Atualizar" button
-        // (Command::ApplyUpdate -> apply_update); we never apply on our own.
+        // Self-update: check GitHub every UPDATE_CHECK_INTERVAL_MS in the
+        // background and announce a newer release once. The UI also triggers a
+        // check on window focus (Command::CheckUpdate). The user starts the
+        // install via the "Atualizar" icon (Command::ApplyUpdate).
         if self.pending_update.is_none()
             && now.saturating_sub(self.last_update_check_ms) >= UPDATE_CHECK_INTERVAL_MS
         {
-            self.last_update_check_ms = now;
-            if let Ok(current) = semver::Version::parse(env!("CARGO_PKG_VERSION")) {
-                if let Some(update) = crate::update::check(&current) {
-                    let version = update.version.to_string();
-                    self.pending_update = Some(update);
-                    events.push(Event::UpdateAvailable { version });
-                }
-            }
+            events.extend(self.check_update());
         }
 
         events

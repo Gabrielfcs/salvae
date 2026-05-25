@@ -53,6 +53,11 @@ pub trait Backend {
     fn restore(&mut self, game_id: &str, version: u64) -> Result<(), String>;
     fn resolve(&mut self, game_id: &str, take_remote: bool) -> Result<(), String>;
 
+    /// Check GitHub for a newer release. Returns an `UpdateAvailable` event if
+    /// one is newly found (no-op if a check already found one). Never errors —
+    /// network failures are ignored and retried later.
+    fn check_update(&mut self) -> Vec<Event>;
+
     /// Download and launch the pending app update (the installer then closes
     /// and reopens the app). Errors if no update is pending or the download
     /// fails.
