@@ -35,8 +35,8 @@ jogo** e **envia o seu quando você fecha** — sem você precisar pensar nisso.
   canal privado do **Discord do seu próprio grupo**.
 - 🔒 **Seguro por padrão.** Os saves são **cifrados no seu PC** (Argon2id +
   AES-256-GCM) com a senha do grupo. O Discord só vê bytes embaralhados.
-- 🪶 **Leve.** Escrito em Rust, binário único, fica quietinho na bandeja até um
-  jogo abrir.
+- 🪶 **Leve.** Escrito em Rust, fica quietinho em segundo plano (minimizado) até
+  um jogo abrir.
 - 🔍 **Código aberto.** Tudo auditável — você sabe exatamente o que roda na sua
   máquina.
 - 🎮 **Você no controle.** Só sincroniza os jogos que **você** configurar.
@@ -88,9 +88,9 @@ O assistente do app cuida disso, mas em resumo:
 Pré-requisitos: [Rust](https://rustup.rs) (toolchain MSVC no Windows).
 
 ```bash
-# app de desktop (bandeja + janela)
+# app de desktop (janela + worker de sync em segundo plano)
 cargo build --release -p salvae-ui
-# binário em target/release/salvae-ui.exe
+# binário em target/release/Salvae.exe
 
 # testes
 cargo test --workspace
