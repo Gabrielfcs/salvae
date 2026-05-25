@@ -32,8 +32,9 @@ WizardImageStretch=yes
 ; The Setup.exe's own icon (and the wizard title-bar icon) — same as the app.
 SetupIconFile=..\crates\salvae-ui\assets\app.ico
 PrivilegesRequired=admin
-; Lets a silent update close the running app and reopen it.
-AppMutex=Salvae
+; Auto-close the running app during a silent update via the Restart Manager
+; (no "please close the application" prompt — that's why there is no AppMutex),
+; then relaunch it from [Run].
 CloseApplications=yes
 RestartApplications=no
 ArchitecturesAllowed=x64compatible

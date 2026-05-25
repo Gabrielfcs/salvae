@@ -982,24 +982,42 @@ impl eframe::App for SalvaeApp {
                 // ready — clicking it starts the update.
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.add_space(2.0);
-                    // Center the [version + optional update icon] group as a unit:
-                    // a left-to-right row whose main axis is center-aligned, so the
-                    // version stays centered and the green icon sits to its right.
-                    let row = egui::Layout::left_to_right(egui::Align::Center)
-                        .with_main_align(egui::Align::Center);
-                    ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), 20.0), row, |ui| {
+                    let version_text = concat!("Salvaê v", env!("CARGO_PKG_VERSION"));
+                    let update = self.vm.available_update.clone();
+                    // A horizontal row always starts at the left, so center the
+                    // [version (+icon)] group by measuring its width and padding.
+                    ui.horizontal(|ui| {
+                        let text_w = ui
+                            .fonts(|f| {
+                                f.layout_no_wrap(
+                                    version_text.to_owned(),
+                                    egui::TextStyle::Small.resolve(ui.style()),
+                                    theme::MUTED,
+                                )
+                            })
+                            .size()
+                            .x;
+                        let icon_w = if update.is_some() {
+                            16.0 + ui.spacing().item_spacing.x
+                        } else {
+                            0.0
+                        };
+                        let pad = ((ui.available_width() - text_w - icon_w) * 0.5).max(0.0);
+                        ui.add_space(pad);
                         ui.label(
-                            egui::RichText::new(concat!("Salvaê v", env!("CARGO_PKG_VERSION")))
+                            egui::RichText::new(version_text)
                                 .small()
                                 .color(theme::MUTED),
                         );
-                        if let Some(version) = self.vm.available_update.clone() {
+                        // Discreet green download icon to the right of the version,
+                        // only when an update is ready (Discord-style).
+                        if let Some(version) = update {
                             let resp = ui
                                 .add(
                                     icon(
                                         egui::include_image!("../assets/icons/download.svg"),
                                         16.0,
-                                        egui::Color32::from_rgb(63, 178, 99),
+                                        egui::Color32::WHITE,
                                     )
                                     .sense(egui::Sense::click()),
                                 )
