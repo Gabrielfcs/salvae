@@ -89,6 +89,8 @@ fn main() -> eframe::Result<()> {
 
             // Read the name state before the worker takes ownership of backend.
             let name_set = !backend.display_name().is_empty();
+            // Restore the group selected in the previous run (if any).
+            let selected_group = cc.storage.and_then(|s| s.get_string("selected_group"));
 
             // Spawn the worker thread, waking the UI via the egui context.
             let ctx = cc.egui_ctx.clone();
@@ -103,7 +105,9 @@ fn main() -> eframe::Result<()> {
                 );
             });
 
-            let app = SalvaeApp::new(cmd_tx, ev_rx).with_name_state(name_set);
+            let app = SalvaeApp::new(cmd_tx, ev_rx)
+                .with_name_state(name_set)
+                .with_selected_group(selected_group);
             Ok(Box::new(app))
         }),
     )

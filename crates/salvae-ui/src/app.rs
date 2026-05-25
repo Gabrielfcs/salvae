@@ -49,6 +49,9 @@ pub struct SalvaeApp {
     was_focused: bool,
     /// egui time (s) of the last focus-triggered update check, for a 30s debounce.
     last_focus_check: f64,
+    /// Whether the startup group selection (restore persisted / default to first)
+    /// has been applied — done once, after the groups first load.
+    initial_select_applied: bool,
 }
 
 impl SalvaeApp {
@@ -63,12 +66,19 @@ impl SalvaeApp {
             surfaced_conflict: None,
             was_focused: false,
             last_focus_check: f64::NEG_INFINITY,
+            initial_select_applied: false,
         }
     }
 
     /// Whether the user's display name was already set (skips the welcome gate).
     pub fn with_name_state(mut self, name_set: bool) -> Self {
         self.name_set = name_set;
+        self
+    }
+
+    /// Restore the group selected in a previous run (persisted via storage).
+    pub fn with_selected_group(mut self, group_id: Option<String>) -> Self {
+        self.forms.selected_group = group_id;
         self
     }
 
@@ -907,8 +917,30 @@ fn label_for<T: IdName>(items: &[T], selected: Option<u64>, placeholder: &str) -
 }
 
 impl eframe::App for SalvaeApp {
+    /// Persist the selected group so it is restored on the next launch.
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        if let Some(id) = &self.forms.selected_group {
+            storage.set_string("selected_group", id.clone());
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.drain_events();
+
+        // On first load (once groups arrive), restore the persisted group
+        // selection; if there was none — or it no longer exists — pre-select the
+        // first group.
+        if !self.initial_select_applied && !self.vm.groups.is_empty() {
+            self.initial_select_applied = true;
+            let valid = self
+                .forms
+                .selected_group
+                .as_ref()
+                .is_some_and(|id| self.vm.groups.iter().any(|g| &g.id == id));
+            if !valid {
+                self.forms.selected_group = Some(self.vm.groups[0].id.clone());
+            }
+        }
 
         // Copy a requested invite to the clipboard (needs the egui context, so
         // it happens here rather than in the view model).
