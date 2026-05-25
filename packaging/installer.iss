@@ -29,6 +29,8 @@ WizardStyle=modern
 WizardImageFile=wizard-image.png
 WizardSmallImageFile=wizard-small.png
 WizardImageStretch=yes
+; The Setup.exe's own icon (and the wizard title-bar icon) — same as the app.
+SetupIconFile=..\crates\salvae-ui\assets\app.ico
 PrivilegesRequired=admin
 ; Lets a silent update close the running app and reopen it.
 AppMutex=Salvae
