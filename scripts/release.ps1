@@ -15,8 +15,14 @@ $cargo = Join-Path $root "Cargo.toml"
 # 2. Build the release exe.
 cargo build --release -p salvae-ui
 
-# 3. Build the installer.
-$iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+# 3. Build the installer. Locate ISCC (Inno Setup) — winget installs it
+# per-user under %LocalAppData%, the classic installer under Program Files.
+$iscc = @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+    "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+    "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $iscc) { throw "ISCC.exe (Inno Setup 6) not found. Install it: winget install JRSoftware.InnoSetup" }
 & $iscc "/DMyAppVersion=$Version" (Join-Path $root "packaging\installer.iss")
 $setup = Join-Path $root "packaging\Salvae-Setup.exe"
 

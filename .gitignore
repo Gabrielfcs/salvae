@@ -4,3 +4,7 @@ Cargo.lock.bak
 
 # Artefatos de planejamento (specs e planos) ficam apenas locais (não versionados)
 docs/superpowers/
+
+# Saídas do instalador (geradas pelo release; não versionar)
+/packaging/Salvae-Setup.exe
+/packaging/*.b3
