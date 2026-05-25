@@ -982,29 +982,33 @@ impl eframe::App for SalvaeApp {
                 // ready — clicking it starts the update.
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.add_space(2.0);
-                    ui.label(
-                        egui::RichText::new(concat!("Salvaê v", env!("CARGO_PKG_VERSION")))
-                            .small()
-                            .color(theme::MUTED),
-                    );
-                    if let Some(version) = self.vm.available_update.clone() {
-                        ui.add_space(4.0);
-                        let button = egui::ImageButton::new(icon(
-                            egui::include_image!("../assets/icons/download.svg"),
-                            18.0,
-                            egui::Color32::from_rgb(63, 178, 99),
-                        ))
-                        .frame(false);
-                        if ui
-                            .add(button)
-                            .on_hover_text(format!(
-                                "Atualização pronta! (v{version}) — clique para atualizar"
-                            ))
-                            .clicked()
-                        {
-                            self.send(Command::ApplyUpdate);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(concat!("Salvaê v", env!("CARGO_PKG_VERSION")))
+                                .small()
+                                .color(theme::MUTED),
+                        );
+                        // Discreet green download icon to the right of the version,
+                        // only when an update is ready (Discord-style).
+                        if let Some(version) = self.vm.available_update.clone() {
+                            let resp = ui
+                                .add(
+                                    icon(
+                                        egui::include_image!("../assets/icons/download.svg"),
+                                        16.0,
+                                        egui::Color32::from_rgb(63, 178, 99),
+                                    )
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                .on_hover_text(format!(
+                                    "Atualização pronta! (v{version}) — clique para atualizar"
+                                ));
+                            if resp.clicked() {
+                                self.send(Command::ApplyUpdate);
+                            }
                         }
-                    }
+                    });
                 });
             });
         egui::TopBottomPanel::bottom("activity")
