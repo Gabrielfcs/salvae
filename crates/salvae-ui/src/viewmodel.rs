@@ -77,12 +77,8 @@ impl ViewModel {
                 ));
             }
             Event::InviteToCopy(s) => self.invite_to_copy = Some(s),
-            Event::UpdateAvailable { version } => {
-                self.available_update = Some(version.clone());
-                self.push_activity(ActivityView::info(format!(
-                    "Atualização disponível: v{version}"
-                )));
-            }
+            // Surface only the discreet update icon — no activity-log "announcement".
+            Event::UpdateAvailable { version } => self.available_update = Some(version),
             Event::History { game_id, versions } => {
                 self.history.insert(game_id, versions);
             }

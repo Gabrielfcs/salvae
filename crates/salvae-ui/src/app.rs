@@ -949,22 +949,6 @@ impl eframe::App for SalvaeApp {
             });
         }
 
-        if let Some(version) = self.vm.available_update.clone() {
-            egui::TopBottomPanel::top("update").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(format!("Atualização disponível: v{version}"));
-                    if theme::primary_button(ui, "Atualizar").clicked() {
-                        self.send(Command::ApplyUpdate);
-                    }
-                    ui.label(
-                        egui::RichText::new("o app vai reiniciar")
-                            .small()
-                            .color(theme::MUTED),
-                    );
-                });
-            });
-        }
-
         let side_frame =
             egui::Frame::side_top_panel(&ctx.style()).inner_margin(egui::Margin::same(16.0));
         let central_frame =
@@ -976,7 +960,9 @@ impl eframe::App for SalvaeApp {
             .frame(side_frame)
             .show(ctx, |ui| {
                 self.groups_panel(ui);
-                // Pin the app version to the bottom of the sidebar.
+                // Pin the app version to the bottom of the sidebar, with a
+                // discreet green download icon (Discord-style) when an update is
+                // ready — clicking it starts the update.
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.add_space(2.0);
                     ui.label(
@@ -984,6 +970,24 @@ impl eframe::App for SalvaeApp {
                             .small()
                             .color(theme::MUTED),
                     );
+                    if let Some(version) = self.vm.available_update.clone() {
+                        ui.add_space(4.0);
+                        let button = egui::ImageButton::new(icon(
+                            egui::include_image!("../assets/icons/download.svg"),
+                            18.0,
+                            egui::Color32::from_rgb(63, 178, 99),
+                        ))
+                        .frame(false);
+                        if ui
+                            .add(button)
+                            .on_hover_text(format!(
+                                "Atualização pronta! (v{version}) — clique para atualizar"
+                            ))
+                            .clicked()
+                        {
+                            self.send(Command::ApplyUpdate);
+                        }
+                    }
                 });
             });
         egui::TopBottomPanel::bottom("activity")
