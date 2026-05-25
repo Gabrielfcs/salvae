@@ -32,9 +32,11 @@ impl<C: Channel> GroupRuntime<C> {
 }
 
 /// How long (ms) to wait after a game closes before pushing its save, giving
-/// the game time to finish writing to disk. The save is backed up immediately
+/// the game time to finish writing to disk. The close is only detected after
+/// the game process has already exited (so the save is normally written
+/// already); this is a small safety margin. The save is backed up immediately
 /// on close regardless; only the upload is deferred.
-pub const PUSH_STABILIZE_MS: u64 = 30_000;
+pub const PUSH_STABILIZE_MS: u64 = 5_000;
 
 /// Drives save sync from game open/close events across all configured groups.
 pub struct Agent<C: Channel, L: ProcessLister> {
@@ -643,7 +645,10 @@ mod tests {
         );
 
         // Before the window elapses: still nothing.
-        assert!(agent.tick(2_000 + 10_000).unwrap().is_empty());
+        assert!(agent
+            .tick(2_000 + PUSH_STABILIZE_MS / 2)
+            .unwrap()
+            .is_empty());
 
         // After the 30s window: the push fires.
         let r = agent.tick(2_000 + PUSH_STABILIZE_MS + 1).unwrap();
