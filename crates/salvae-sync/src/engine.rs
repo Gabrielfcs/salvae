@@ -112,6 +112,18 @@ impl<C: Channel> SyncEngine<C> {
             .map_err(|e| SyncError::Io(e.to_string()))
     }
 
+    /// Force a backup snapshot of `save_folder` right now (no remote I/O). Used
+    /// to always preserve the just-played save on game close, before the
+    /// deferred push — so progress is never lost even if the push is skipped.
+    pub fn snapshot(
+        &self,
+        game_id: &str,
+        save_folder: &Path,
+        now_ms: u64,
+    ) -> Result<(), SyncError> {
+        self.backup(game_id, save_folder, now_ms)
+    }
+
     /// Download `version` and write it over `save_folder` (backing up first).
     fn apply_version(
         &mut self,

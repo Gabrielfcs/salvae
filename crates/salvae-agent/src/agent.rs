@@ -31,6 +31,11 @@ impl<C: Channel> GroupRuntime<C> {
     }
 }
 
+/// How long (ms) to wait after a game closes before pushing its save, giving
+/// the game time to finish writing to disk. The save is backed up immediately
+/// on close regardless; only the upload is deferred.
+pub const PUSH_STABILIZE_MS: u64 = 30_000;
+
 /// Drives save sync from game open/close events across all configured groups.
 pub struct Agent<C: Channel, L: ProcessLister> {
     watcher: Watcher<L>,
@@ -38,6 +43,8 @@ pub struct Agent<C: Channel, L: ProcessLister> {
     groups: Vec<GroupRuntime<C>>,
     /// game id -> human title, for friendly channel messages.
     game_names: BTreeMap<String, String>,
+    /// game id -> timestamp (ms) at which a deferred close-push becomes due.
+    pending_pushes: BTreeMap<String, u64>,
 }
 
 impl<C: Channel, L: ProcessLister> Agent<C, L> {
@@ -47,6 +54,7 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
             detector,
             groups,
             game_names: BTreeMap::new(),
+            pending_pushes: BTreeMap::new(),
         }
     }
 
@@ -126,18 +134,55 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
         Ok(AgentOutcome::Closed { push })
     }
 
+    /// On game close, immediately snapshot the local save (always), so progress
+    /// is preserved before the deferred push — even if the push never runs.
+    fn snapshot_on_close(&mut self, game_id: &str, now_ms: u64) -> Result<(), AgentError> {
+        if let Some((rt, folder)) = self.resolve(game_id) {
+            rt.engine.snapshot(game_id, &folder, now_ms)?;
+        }
+        Ok(())
+    }
+
     /// Poll processes once, turn detected game open/close events into sync
     /// actions, and return each event with its outcome.
+    ///
+    /// A close does NOT push immediately: it backs up the save and schedules the
+    /// push for `PUSH_STABILIZE_MS` later (giving the game time to finish
+    /// writing). Opening a game cancels its pending push. Deferred pushes whose
+    /// window has elapsed are flushed here and reported as `Closed` outcomes.
     pub fn tick(&mut self, now_ms: u64) -> Result<Vec<(GameEvent, AgentOutcome)>, AgentError> {
         let process_events = self.watcher.poll()?;
         let game_events = self.detector.process(&process_events);
         let mut results = Vec::new();
         for event in game_events {
             let outcome = match &event {
-                GameEvent::Opened { game_id } => self.handle_open(game_id, now_ms)?,
-                GameEvent::Closed { game_id } => self.handle_close(game_id, now_ms)?,
+                GameEvent::Opened { game_id } => {
+                    self.pending_pushes.remove(game_id);
+                    Some(self.handle_open(game_id, now_ms)?)
+                }
+                GameEvent::Closed { game_id } => {
+                    self.snapshot_on_close(game_id, now_ms)?;
+                    self.pending_pushes
+                        .insert(game_id.clone(), now_ms + PUSH_STABILIZE_MS);
+                    None
+                }
             };
-            results.push((event, outcome));
+            if let Some(outcome) = outcome {
+                results.push((event, outcome));
+            }
+        }
+
+        // Flush deferred pushes whose stabilization window has elapsed.
+        let due: Vec<String> = self
+            .pending_pushes
+            .iter()
+            .filter(|&(_, &deadline)| now_ms >= deadline)
+            .map(|(game_id, _)| game_id.clone())
+            .collect();
+        for game_id in due {
+            self.pending_pushes.remove(&game_id);
+            let outcome = self.handle_close(&game_id, now_ms)?;
+            results.push((GameEvent::Closed { game_id }, outcome));
         }
         Ok(results)
     }
@@ -555,6 +600,58 @@ mod tests {
         agent.tick(50).unwrap();
         // While it's open, the background poll must not touch its folder again.
         assert!(agent.poll_remote(100).unwrap().is_empty());
+    }
+
+    #[test]
+    fn close_defers_push_until_the_stabilization_window() {
+        use salvae_sync::engine::PushOutcome;
+        use salvae_watch::process::ProcessInfo;
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("save");
+        let frames = vec![
+            vec![ProcessInfo {
+                pid: 9,
+                exe_path: "C:/Steam/common/Valheim/valheim.exe".into(),
+            }], // open
+            vec![], // close
+            vec![], // idle, before the window elapses
+        ];
+        let mut agent = agent_for(
+            InMemoryChannel::new(),
+            &folder,
+            dir.path().join("state.json"),
+            dir.path().join("backups"),
+            frames,
+        );
+
+        // Open (no remote save yet), then play (write a local save).
+        agent.tick(1_000).unwrap();
+        write(&folder, "world.db", b"played");
+
+        // Close: the push is deferred (no Closed result yet) but a backup is taken.
+        assert!(
+            agent.tick(2_000).unwrap().is_empty(),
+            "close must defer the push"
+        );
+        let backups = std::fs::read_dir(dir.path().join("backups").join("steam_1"))
+            .unwrap()
+            .count();
+        assert!(
+            backups >= 1,
+            "close must snapshot the local save immediately"
+        );
+
+        // Before the window elapses: still nothing.
+        assert!(agent.tick(2_000 + 10_000).unwrap().is_empty());
+
+        // After the 30s window: the push fires.
+        let r = agent.tick(2_000 + PUSH_STABILIZE_MS + 1).unwrap();
+        assert_eq!(r.len(), 1);
+        assert!(matches!(
+            &r[0].1,
+            AgentOutcome::Closed { push: PushOutcome::Pushed(v) } if v.number == 1
+        ));
     }
 
     #[test]
