@@ -12,7 +12,8 @@ Set-Location $root
 $cargo = Join-Path $root "Cargo.toml"
 (Get-Content $cargo) -replace '^version = ".*"', "version = `"$Version`"" | Set-Content $cargo
 
-# 2. Build the release exe.
+# 2. Build the release exe (close any running instance so the exe isn't locked).
+Get-Process Salvae -ErrorAction SilentlyContinue | Stop-Process -Force
 cargo build --release -p salvae-ui
 
 # 3. Build the installer. Locate ISCC (Inno Setup) — winget installs it
@@ -31,11 +32,15 @@ Push-Location (Split-Path $setup)
 b3sum (Split-Path $setup -Leaf) | Set-Content "Salvae-Setup.exe.b3" -Encoding ascii
 Pop-Location
 
-# 5. Commit the version bump and publish the release.
+# 5. Commit the version bump, push, then publish the release. Push BEFORE
+# `gh release create` so the tag/commit exist on the remote and the release
+# points at the right commit.
 git add Cargo.toml Cargo.lock
 git commit -m "chore: release $Version"
 git tag -a "v$Version" -m "Salvaê $Version"
+git push origin master
+git push origin "v$Version"
 gh release create "v$Version" $setup (Join-Path (Split-Path $setup) "Salvae-Setup.exe.b3") `
     --title "Salvaê $Version" --notes "Salvaê $Version"
 
-Write-Host "Released v$Version. Push with: git push origin master --tags"
+Write-Host "Released v$Version."
