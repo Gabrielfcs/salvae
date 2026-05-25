@@ -23,6 +23,12 @@ OutputBaseFilename=Salvae-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; Branded wizard art (mascot on the app's dark background) instead of the
+; default setup-box image. Pre-sized to the wizard panel ratio, so stretch is
+; safe. Inno Setup 6.3+ accepts PNG here.
+WizardImageFile=wizard-image.png
+WizardSmallImageFile=wizard-small.png
+WizardImageStretch=yes
 PrivilegesRequired=admin
 ; Lets a silent update close the running app and reopen it.
 AppMutex=Salvae
