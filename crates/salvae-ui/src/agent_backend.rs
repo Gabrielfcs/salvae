@@ -482,19 +482,35 @@ impl Backend for AgentBackend {
                     pull,
                     others_playing,
                 } => {
-                    let msg = match pull {
-                        salvae_sync::engine::PullOutcome::Applied(v) => format!(
-                            "{name} aberto — baixou a versão {} (salva por {})",
-                            v.number, v.author
-                        ),
+                    match pull {
+                        salvae_sync::engine::PullOutcome::Applied(v) => {
+                            events.push(Event::Activity(ActivityView::info(format!(
+                                "{name} aberto — baixou a versão {} (salva por {})",
+                                v.number, v.author
+                            ))));
+                        }
                         salvae_sync::engine::PullOutcome::AlreadyUpToDate(n) => {
-                            format!("{name} aberto — já estava na versão {n}")
+                            events.push(Event::Activity(ActivityView::info(format!(
+                                "{name} aberto — já estava na versão {n}"
+                            ))));
                         }
                         salvae_sync::engine::PullOutcome::NoRemoteSave => {
-                            format!("{name} aberto — ainda não há save no grupo")
+                            events.push(Event::Activity(ActivityView::info(format!(
+                                "{name} aberto — ainda não há save no grupo"
+                            ))));
                         }
-                    };
-                    events.push(Event::Activity(ActivityView::info(msg)));
+                        // Local has un-pushed changes and the group has a newer
+                        // version — do NOT overwrite; ask the user to resolve.
+                        salvae_sync::engine::PullOutcome::Conflict { remote } => {
+                            events.push(Event::Activity(ActivityView::warning(format!(
+                                "{name}: seu save local não foi enviado e o grupo tem uma versão mais nova — resolva o conflito para não perder seu progresso."
+                            ))));
+                            events.push(Event::Conflict {
+                                game_id: game_id.clone(),
+                                remote: to_version_view(&remote),
+                            });
+                        }
+                    }
                     if !others_playing.is_empty() {
                         events.push(Event::Activity(ActivityView::warning(format!(
                             "Também jogando {name} agora: {}",
@@ -534,13 +550,27 @@ impl Backend for AgentBackend {
             match self.agent.poll_remote(now) {
                 Ok(pulled) => {
                     for (game_id, outcome) in pulled {
-                        if let salvae_sync::engine::PullOutcome::Applied(v) = outcome {
-                            let name = self.game_name(&game_id);
-                            events.push(Event::Activity(ActivityView::info(format!(
-                                "{name} — baixou a versão {} do grupo (salva por {})",
-                                v.number, v.author
-                            ))));
-                            events.push(Event::Groups(self.refresh_groups()));
+                        let name = self.game_name(&game_id);
+                        match outcome {
+                            salvae_sync::engine::PullOutcome::Applied(v) => {
+                                events.push(Event::Activity(ActivityView::info(format!(
+                                    "{name} — baixou a versão {} do grupo (salva por {})",
+                                    v.number, v.author
+                                ))));
+                                events.push(Event::Groups(self.refresh_groups()));
+                            }
+                            // Local has un-pushed changes — surface a conflict
+                            // instead of overwriting them.
+                            salvae_sync::engine::PullOutcome::Conflict { remote } => {
+                                events.push(Event::Activity(ActivityView::warning(format!(
+                                    "{name}: há uma versão mais nova do grupo, mas seu save local tem mudanças não enviadas — resolva o conflito."
+                                ))));
+                                events.push(Event::Conflict {
+                                    game_id: game_id.clone(),
+                                    remote: to_version_view(&remote),
+                                });
+                            }
+                            _ => {}
                         }
                     }
                 }

@@ -163,9 +163,15 @@ impl<C: Channel, L: ProcessLister> Agent<C, L> {
                     continue;
                 }
                 let outcome = rt.engine.pull(&game_id, &folder, now_ms)?;
-                if matches!(outcome, PullOutcome::Applied(_)) {
-                    save_state(rt)?;
-                    applied.push((game_id, outcome));
+                match outcome {
+                    PullOutcome::Applied(_) => {
+                        save_state(rt)?;
+                        applied.push((game_id, outcome));
+                    }
+                    // Surface a conflict so the UI can prompt; nothing was
+                    // overwritten and no state changed.
+                    PullOutcome::Conflict { .. } => applied.push((game_id, outcome)),
+                    PullOutcome::AlreadyUpToDate(_) | PullOutcome::NoRemoteSave => {}
                 }
             }
         }

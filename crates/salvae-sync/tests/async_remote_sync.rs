@@ -28,13 +28,14 @@ fn an_offline_members_published_save_is_synced_later_by_another() {
     let a_backups = tempfile::tempdir().unwrap();
     let a_save = tempfile::tempdir().unwrap();
     write(a_save.path(), "world.db", b"A: day 1");
-    {
+    let a_state = {
         let mut a = SyncEngine::new(&channel, key, "Ana", "dev-ana", 5, a_backups.path());
         assert!(matches!(
             a.push("steam:1", "Stardew", a_save.path(), 1_000).unwrap(),
             PushOutcome::Pushed(v) if v.number == 1
         ));
-    } // `a` dropped here — A is gone.
+        a.state().clone()
+    }; // `a` dropped here — A is gone (its state file would persist on disk).
 
     // The save is now sitting in the channel, encrypted, in the friendly format
     // (not raw JSON), independent of A being online.
@@ -69,13 +70,11 @@ fn an_offline_members_published_save_is_synced_later_by_another() {
         PullOutcome::AlreadyUpToDate(1)
     );
 
-    // ---- Later, A returns, plays again and publishes v2, then leaves again. ----
-    write(a_save.path(), "world.db", b"A: day 2");
+    // ---- Later, A returns (with its persisted state), plays again, publishes v2. ----
     {
-        let mut a = SyncEngine::new(&channel, key, "Ana", "dev-ana", 5, a_backups.path());
-        // A is in sync with v1 (its state file would say so on a real machine);
-        // here we pull first to mirror "open game -> pull -> play -> close -> push".
-        a.pull("steam:1", a_save.path(), 6_000).unwrap();
+        let mut a = SyncEngine::new(&channel, key, "Ana", "dev-ana", 5, a_backups.path())
+            .with_state(a_state);
+        // A plays: its local save advances past the synced v1.
         write(a_save.path(), "world.db", b"A: day 2");
         assert!(matches!(
             a.push("steam:1", "Stardew", a_save.path(), 6_100).unwrap(),

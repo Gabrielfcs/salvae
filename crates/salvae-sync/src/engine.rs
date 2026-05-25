@@ -26,6 +26,10 @@ pub enum PullOutcome {
     AlreadyUpToDate(u64),
     /// Downloaded and applied this version.
     Applied(SaveVersion),
+    /// A newer version exists remotely, but the local save was modified since
+    /// the last sync — applying it would discard un-pushed changes, so the
+    /// caller must [`resolve`](SyncEngine::resolve) instead of overwriting.
+    Conflict { remote: SaveVersion },
 }
 
 /// Result of [`SyncEngine::push`] / [`SyncEngine::resolve`].
@@ -120,11 +124,38 @@ impl<C: Channel> SyncEngine<C> {
         self.backup(game_id, save_folder, now_ms)?;
         clear_folder(save_folder)?;
         pack::unpack_folder(&packed, save_folder)?;
-        self.state.set(game_id, version.number);
+        // Record the synced content hash from the folder as it now is, so a
+        // later dirty-check (repack + compare) is consistent.
+        let synced = content_hash(&pack::pack_folder(save_folder)?);
+        self.state.set(game_id, version.number, &synced);
         Ok(())
     }
 
-    /// Pull the latest version of `game_id` into `save_folder`.
+    /// Whether `save_folder` was modified since the last sync (so a pull must
+    /// not silently overwrite it). An empty/absent folder is never dirty.
+    fn local_is_dirty(
+        &self,
+        game_id: &str,
+        save_folder: &Path,
+        latest: &SaveVersion,
+    ) -> Result<bool, SyncError> {
+        if folder_is_empty(save_folder) {
+            return Ok(false);
+        }
+        let local_hash = content_hash(&pack::pack_folder(save_folder)?);
+        Ok(match self.state.synced_hash(game_id) {
+            // We know what we last synced: dirty if the folder changed since.
+            Some(h) => local_hash != h,
+            // No record (legacy state / never synced): only dirty if it also
+            // differs from the remote we would apply — identical content is
+            // not a real conflict.
+            None => local_hash != latest.content_hash,
+        })
+    }
+
+    /// Pull the latest version of `game_id` into `save_folder`. If the local
+    /// save has un-pushed changes, returns [`PullOutcome::Conflict`] instead of
+    /// overwriting it.
     pub fn pull(
         &mut self,
         game_id: &str,
@@ -136,6 +167,9 @@ impl<C: Channel> SyncEngine<C> {
         };
         if self.state.get(game_id) == Some(latest.number) {
             return Ok(PullOutcome::AlreadyUpToDate(latest.number));
+        }
+        if self.local_is_dirty(game_id, save_folder, &latest)? {
+            return Ok(PullOutcome::Conflict { remote: latest });
         }
         self.apply_version(game_id, save_folder, &latest, now_ms)?;
         Ok(PullOutcome::Applied(latest))
@@ -158,7 +192,7 @@ impl<C: Channel> SyncEngine<C> {
         match latest {
             None => self.do_push(game_id, game_name, &packed, now_ms),
             Some(latest) if latest.content_hash == local_hash => {
-                self.state.set(game_id, latest.number);
+                self.state.set(game_id, latest.number, &local_hash);
                 Ok(PushOutcome::NoChange(latest.number))
             }
             Some(latest) if self.state.get(game_id) == Some(latest.number) => {
@@ -185,7 +219,8 @@ impl<C: Channel> SyncEngine<C> {
             now_ms,
             self.max_versions,
         )?;
-        self.state.set(game_id, version.number);
+        self.state
+            .set(game_id, version.number, &version.content_hash);
         Ok(PushOutcome::Pushed(version))
     }
 
@@ -205,7 +240,7 @@ impl<C: Channel> SyncEngine<C> {
                 // If local already equals the latest remote, nothing to upload.
                 if let Some(latest) = self.vault().latest_version(game_id)? {
                     if latest.content_hash == content_hash(&packed) {
-                        self.state.set(game_id, latest.number);
+                        self.state.set(game_id, latest.number, &latest.content_hash);
                         return Ok(PushOutcome::NoChange(latest.number));
                     }
                 }
@@ -328,6 +363,14 @@ impl<C: Channel> SyncEngine<C> {
     }
 }
 
+/// Whether `path` is absent or contains no entries.
+fn folder_is_empty(path: &Path) -> bool {
+    match std::fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(_) => true,
+    }
+}
+
 /// Remove all entries inside `path` (but keep `path` itself).
 fn clear_folder(path: &Path) -> Result<(), SyncError> {
     if !path.exists() {
@@ -420,9 +463,8 @@ mod tests {
     }
 
     #[test]
-    fn pull_over_existing_folder_backs_up_with_colon_game_id() {
-        // Real ids contain `:` (`steam:892970`), which is illegal in Windows
-        // path names. Backing up an existing folder must still succeed.
+    fn pull_does_not_overwrite_a_diverged_local_then_resolve_backs_up_with_colon_id() {
+        // Real ids contain `:` (`steam:892970`), illegal in Windows path names.
         let channel = InMemoryChannel::new();
         let backups = tempfile::tempdir().unwrap();
         let folder = tempfile::tempdir().unwrap();
@@ -442,21 +484,85 @@ mod tests {
             )
             .unwrap();
 
-        // The local folder already has a (diverged) save to be backed up.
+        // The local folder has un-pushed (diverged) progress.
         write(folder.path(), "world.db", b"local");
 
         let mut engine = SyncEngine::new(&channel, [1u8; 32], "me", "dev-1", 5, backups.path());
+
+        // Pull must NOT overwrite the diverged local — it reports a conflict and
+        // leaves the local content untouched.
         let outcome = engine.pull("steam:892970", folder.path(), 200).unwrap();
-        assert!(matches!(outcome, PullOutcome::Applied(v) if v.number == 1));
+        assert!(matches!(outcome, PullOutcome::Conflict { remote } if remote.number == 1));
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"local"
+        );
+
+        // Resolving with TakeRemote applies the remote and backs up the local
+        // under a sanitized (colon-free) directory.
+        engine
+            .resolve(
+                "steam:892970",
+                "steam:892970",
+                folder.path(),
+                Resolution::TakeRemote,
+                300,
+            )
+            .unwrap();
         assert_eq!(
             std::fs::read(folder.path().join("world.db")).unwrap(),
             b"remote"
         );
-
-        // A backup was written under a sanitized (colon-free) directory.
         let backup_dir = backups.path().join("steam_892970");
         assert!(backup_dir.is_dir());
         assert_eq!(std::fs::read_dir(&backup_dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn pull_conflicts_when_local_was_edited_since_sync() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"v1 content");
+        let backups = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+
+        // Sync v1 — local is now clean.
+        assert!(matches!(
+            engine.pull("game", folder.path(), 100).unwrap(),
+            PullOutcome::Applied(_)
+        ));
+
+        // A teammate pushes v2, and meanwhile we edited our save (un-pushed).
+        seed(&channel, "game", b"v2 content");
+        write(folder.path(), "world.db", b"my un-pushed progress");
+
+        // The pull must NOT overwrite our edit — it reports a conflict.
+        assert!(matches!(
+            engine.pull("game", folder.path(), 200).unwrap(),
+            PullOutcome::Conflict { remote } if remote.number == 2
+        ));
+        assert_eq!(
+            std::fs::read(folder.path().join("world.db")).unwrap(),
+            b"my un-pushed progress"
+        );
+    }
+
+    #[test]
+    fn pull_applies_when_local_is_clean_even_if_remote_advanced() {
+        let channel = InMemoryChannel::new();
+        seed(&channel, "game", b"v1 content");
+        let backups = tempfile::tempdir().unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let mut engine = engine_over(&channel, backups.path());
+
+        engine.pull("game", folder.path(), 100).unwrap(); // synced v1, clean
+        seed(&channel, "game", b"v2 content"); // teammate pushes v2
+
+        // Local untouched since the last sync -> safe to apply the newer remote.
+        assert!(matches!(
+            engine.pull("game", folder.path(), 200).unwrap(),
+            PullOutcome::Applied(v) if v.number == 2
+        ));
     }
 
     #[test]
